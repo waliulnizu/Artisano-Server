@@ -1,9 +1,13 @@
 import { Router } from 'express';
-import { registerUser } from '../controllers/auth.controller.js';
+// loginUser ইমপোর্ট করা হলো
+import { registerUser, loginUser } from '../controllers/auth.controller.js';
 
 const router = Router();
 
-// ফ্রন্টএন্ড যখন /register এ POST রিকোয়েস্ট পাঠাবে, তখন registerUser ফাংশনটি কাজ করবে
+// রেজিস্ট্রেশন রাউট
 router.post('/register', registerUser);
+
+// লগইন রাউট
+router.post('/login', loginUser);
 
 export default router;
