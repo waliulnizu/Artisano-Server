@@ -11,6 +11,17 @@ const generateToken = (id) => {
 };
 
 // ==========================================
+// 📌 গ্লোবাল কুকি অপশনস (কোড ক্লিন রাখার জন্য)
+// ==========================================
+const cookieOptions = {
+    path: '/',
+    httpOnly: true,
+    secure: false, // Localhost এর জন্য এটি false হতে হবে!
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+};
+
+// ==========================================
 // 📌 User Registration Controller
 // ==========================================
 export const registerUser = async (req, res) => {
@@ -35,13 +46,8 @@ export const registerUser = async (req, res) => {
 
         const token = generateToken(user._id);
 
-        res.cookie('token', token, {
-            path: '/',
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
+        // 📌 এখানে আমরা উপরের বানানো cookieOptions ব্যবহার করেছি
+        res.cookie('token', token, cookieOptions);
 
         user.password = undefined;
 
@@ -82,13 +88,8 @@ export const loginUser = async (req, res) => {
 
         const token = generateToken(user._id);
 
-        res.cookie('token', token, {
-            path: '/',
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
+        // 📌 এখানেও আমরা উপরের বানানো cookieOptions ব্যবহার করেছি
+        res.cookie('token', token, cookieOptions);
 
         user.password = undefined;
 
@@ -103,3 +104,40 @@ export const loginUser = async (req, res) => {
         res.status(500).json({ success: false, message: 'Error during login' });
     }
 };
+
+// ==========================================
+// 📌 Get Current User Controller (/me)
+// ==========================================
+export const getMe = async (req, res) => {
+    try {
+        const user = req.user;
+
+        res.status(200).json({
+            success: true,
+            user,
+        });
+
+    } catch (error) {
+        console.error('Get Me Error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Server Error while fetching user data' 
+        });
+    }
+};
+
+// 📌 Logout Controller
+export const logoutUser = async (req, res) => {
+    try {
+        // কুকি থেকে টোকেনটি মুছে ফেলার জন্য আমরা একই নামের কুকি সেট করব কিন্তু মেয়াদ বা maxAge শূন্য করে দেব
+        res.cookie('token', '', {
+            httpOnly: true,
+            expires: new Date(0), // এখনই এক্সপায়ার করে দাও
+        });
+
+        res.status(200).json({ success: true, message: 'Logged out successfully!' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error during logout' });
+    }
+};
+
