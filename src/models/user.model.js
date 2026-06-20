@@ -43,13 +43,12 @@ const userSchema = new mongoose.Schema(
 );
 
 // ২. ডাটাবেসে সেভ হওয়ার ঠিক আগে পাসওয়ার্ড হ্যাশ (লুকানোর) করার লজিক (Pre-save Hook)
-userSchema.pre('save', async function (next) {
+userSchema.pre('save', async function () {
     // যদি পাসওয়ার্ড পরিবর্তন না হয়, তাহলে এটি স্কিপ করে সামনে যাও
-    if (!this.isModified('password')) return next();
+    if (!this.isModified('password')) return;
 
     // পাসওয়ার্ড পরিবর্তন বা নতুন হলে সেটিকে হ্যাশ করো (12 rounds of salt)
     this.password = await bcrypt.hash(this.password, 12);
-    next();
 });
 
 // ৩. লগইন করার সময় ইউজারের দেওয়া পাসওয়ার্ড আর ডাটাবেসের হ্যাশ পাসওয়ার্ড মেলানোর ফাংশন
