@@ -1,36 +1,40 @@
+import User from '../models/user.model.js';
+import jwt from 'jsonwebtoken';
+
 // ==========================================
-// 📌 User Login Controller
+// 📌 JWT টোকেন জেনারেট করার হেল্পার ফাংশন
 // ==========================================
-export const loginUser = async (req, res) => {
+const generateToken = (id) => {
+    return jwt.sign({ id }, process.env.JWT_SECRET, {
+        expiresIn: '7d',
+    });
+};
+
+// ==========================================
+// 📌 User Registration Controller
+// ==========================================
+export const registerUser = async (req, res) => {
     try {
-        // ১. ফ্রন্টএন্ড থেকে ইমেইল এবং পাসওয়ার্ড রিসিভ করা
-        const { email, password } = req.body;
+        const { name, email, password, role } = req.body;
 
-        // ২. ভ্যালিডেশন: ইমেইল বা পাসওয়ার্ড ফাঁকা আছে কি না
-        if (!email || !password) {
-            return res.status(400).json({ success: false, message: 'Please provide email and password' });
+        if (!name || !email || !password) {
+            return res.status(400).json({ success: false, message: 'Please provide all required fields.' });
         }
 
-        // ৩. ডাটাবেসে ইউজার খোঁজা (এখানে একটি বিশেষ ট্রিক আছে)
-        const user = await User.findOne({ email }).select('+password');
-        
-        // যদি ওই ইমেইলে কোনো ইউজার না থাকে
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ success: false, message: 'Email is already registered. Please login.' });
         }
 
-        // ৪. পাসওয়ার্ড মেলানো (আমাদের বানানো comparePassword মেথড দিয়ে)
-        const isMatch = await user.comparePassword(password, user.password);
-        
-        // পাসওয়ার্ড ভুল হলে
-        if (!isMatch) {
-            return res.status(401).json({ success: false, message: 'Invalid credentials' });
-        }
+        const user = await User.create({
+            name,
+            email,
+            password,
+            role: role || 'user',
+        });
 
-        // ৫. সব ঠিক থাকলে নতুন টোকেন জেনারেট করা
         const token = generateToken(user._id);
 
-        // ৬. টোকেনটি কুকিতে সেট করা
         res.cookie('token', token, {
             path: '/',
             httpOnly: true,
@@ -39,7 +43,53 @@ export const loginUser = async (req, res) => {
             maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
-        // ৭. সিকিউরিটির জন্য রেসপন্স থেকে পাসওয়ার্ড মুছে দেওয়া
+        user.password = undefined;
+
+        res.status(201).json({
+            success: true,
+            message: 'Registration successful!',
+            user,
+        });
+
+    } catch (error) {
+        console.error('Registration Error:', error);
+        res.status(500).json({ success: false, message: 'Server Error during registration' });
+    }
+};
+
+// ==========================================
+// 📌 User Login Controller
+// ==========================================
+export const loginUser = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ success: false, message: 'Please provide email and password' });
+        }
+
+        const user = await User.findOne({ email }).select('+password');
+        
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        }
+
+        const isMatch = await user.comparePassword(password, user.password);
+        
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        }
+
+        const token = generateToken(user._id);
+
+        res.cookie('token', token, {
+            path: '/',
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
+
         user.password = undefined;
 
         res.status(200).json({
