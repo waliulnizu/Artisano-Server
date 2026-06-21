@@ -141,3 +141,21 @@ export const logoutUser = async (req, res) => {
     }
 };
 
+
+// প্রোফাইল আপডেট কন্ট্রোলার
+export const updateProfile = async (req, res) => {
+    try {
+        const { name } = req.body; // ইউজার যা পরিবর্তন করতে চায়
+        const userId = req.user._id; // মিডলওয়্যার থেকে পাওয়া ইউজার আইডি
+
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { name },
+            { new: true, runValidators: true }
+        ).select("-password");
+
+        res.status(200).json({ success: true, user: updatedUser });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error updating profile" });
+    }
+};

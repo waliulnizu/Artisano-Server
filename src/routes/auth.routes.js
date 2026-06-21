@@ -1,5 +1,6 @@
 import express from 'express';
 import { registerUser, loginUser, getMe, logoutUser } from '../controllers/auth.controller.js'; // getMe ইমপোর্ট করা হলো
+import { updateProfile } from "../controllers/auth.controller.js"
 import { protect } from '../middlewares/auth.middleware.js'; // দারোয়ানকে (guard) ইমপোর্ট করা হলো
 
 const router = express.Router();
@@ -8,6 +9,7 @@ const router = express.Router();
 router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.post('/logout', logoutUser);
+router.patch("/update-profile", protect, updateProfile);
 
 // 📌 Protected Routes (এখানে আগে দারোয়ান চেক করবে, তারপর কন্ট্রোলারে যাবে)
 // লজিক: যখনই কেউ GET /me তে রিকোয়েস্ট পাঠাবে, প্রথমে protect ফাংশন রান হবে। 
