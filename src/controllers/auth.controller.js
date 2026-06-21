@@ -1,25 +1,6 @@
 import User from '../models/user.model.js';
-import jwt from 'jsonwebtoken';
-
-// ==========================================
-// 📌 JWT টোকেন জেনারেট করার হেল্পার ফাংশন
-// ==========================================
-const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, {
-        expiresIn: '7d',
-    });
-};
-
-// ==========================================
-// 📌 গ্লোবাল কুকি অপশনস (কোড ক্লিন রাখার জন্য)
-// ==========================================
-const cookieOptions = {
-    path: '/',
-    httpOnly: true,
-    secure: false, // Localhost এর জন্য এটি false হতে হবে!
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-};
+import { generateToken, cookieOptions } from '../utils/auth.utils.js';
+import bcrypt from 'bcryptjs';
 
 // ==========================================
 // 📌 User Registration Controller
@@ -142,20 +123,26 @@ export const logoutUser = async (req, res) => {
 };
 
 
-// প্রোফাইল আপডেট কন্ট্রোলার
-export const updateProfile = async (req, res) => {
+
+
+// পাসওয়ার্ড পরিবর্তনের কন্ট্রোলার
+export const changePassword = async (req, res) => {
     try {
-        const { name } = req.body; // ইউজার যা পরিবর্তন করতে চায়
-        const userId = req.user._id; // মিডলওয়্যার থেকে পাওয়া ইউজার আইডি
+        const { currentPassword, newPassword } = req.body;
+        const user = await User.findById(req.user._id).select("+password");
 
-        const updatedUser = await User.findByIdAndUpdate(
-            userId,
-            { name },
-            { new: true, runValidators: true }
-        ).select("-password");
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ success: false, message: "Current password does not match" });
+        }
 
-        res.status(200).json({ success: true, user: updatedUser });
+        // const salt = await bcrypt.genSalt(10);
+        // user.password = await bcrypt.hash(newPassword, salt);
+        user.password = newPassword;
+        await user.save();
+
+        res.status(200).json({ success: true, message: "Password updated successfully" });
     } catch (error) {
-        res.status(500).json({ success: false, message: "Error updating profile" });
+        res.status(500).json({ success: false, message: "Error changing password" });
     }
 };
