@@ -1,32 +1,88 @@
+import { Content } from "../models/content.model.js";
+import { uploadOnCloudinary } from "../utils/cloudinary.js"; 
 
+// ==========================================
+// 📌 ১. Create New Content (Admin Only)
+// ==========================================
+export const createContent = async (req, res) => {
+    try {
+        const { title, description, category, isPremiumOnly, resourceLink } = req.body;  
+
+        if (!title || !description || !category) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Please provide title, description, and category." 
+            });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: "Artwork image is required!" });
+        }
+
+        const fileData = req.file.buffer ? req.file.buffer : req.file.path;
+        const cloudinaryResult = await uploadOnCloudinary(fileData, "artisano_contents");
+        
+        if (!cloudinaryResult) {
+            return res.status(500).json({ success: false, message: "Image upload to Cloudinary failed" });
+        }
+
+        const newContent = await Content.create({
+            title,
+            description,
+            category,
+            isPremiumOnly: isPremiumOnly === 'true' || isPremiumOnly === true, 
+            resourceLink,
+            featuredImage: cloudinaryResult.secure_url, 
+            author: req.user._id 
+        });
+
+        res.status(201).json({ success: true, message: "Artwork published successfully!", data: newContent });
+
+    } catch (error) {
+        console.error("Create Content Error:", error);
+        res.status(500).json({ success: false, message: "Server error creating content" });
+    }
+};
+
+// ==========================================
+// 📌 ২. Get All Content for VIP Dashboard (Fix: Shows Both Free & Premium)
+// ==========================================
 export const getPremiumContent = async (req, res) => {
     try {
-        // 🧠 Developer Thought: 
-        // এই ফাংশনে রিকোয়েস্ট পৌঁছানোর মানেই হলো ইউজার 'protect' এবং 'checkPremium' 
-        // দুটো মিডলওয়্যারই সফলভাবে পার হয়ে এসেছে। 
-        // তাই আমাদের এখানে আর নতুন করে ইউজারের স্ট্যাটাস চেক করার দরকার নেই।
+        // 🧠 Developer Thought: আগে এখানে { isPremiumOnly: true } দিয়ে ফিল্টার করা ছিল।
+        // যেহেতু আমরা ফ্রি এবং প্রিমিয়াম সব আর্ট এখানে দেখাবো, তাই ফিল্টার অবজেক্টটি সম্পূর্ণ খালি {} করে দিলাম।
+        const allData = await Content.find({})
+            .sort({ createdAt: -1 }) 
+            .populate("author", "name avatar"); 
 
-        // আমরা আপাতত কিছু ডেমো (Mock) প্রিমিয়াম ডাটা পাঠাচ্ছি।
-        // ভবিষ্যতে এখানে ডাটাবেস থেকে স্পেশাল কোর্স বা পেইড আর্টিক্যাল ফেচ করা হবে।
-        const premiumData = {
-            title: "Secret Masterclass: Full-Stack Architecture",
-            videoUrl: "https://example.com/premium-video-101",
-            author: "Artisano Pro Team"
-        };
-
-        // ২০০ (OK) স্ট্যাটাস কোড সহ ডাটা পাঠানো হলো
         res.status(200).json({
             success: true,
-            message: "Welcome to the VIP Lounge!",
-            data: premiumData
+            count: allData.length,
+            data: allData
         });
 
     } catch (error) {
-        // যদি ডাটাবেস বা সার্ভারে কোনো অপ্রত্যাশিত সমস্যা হয়
-        console.error("Premium Content Error:", error);
-        res.status(500).json({ 
-            success: false, 
-            message: "Failed to load premium content" 
+        console.error("Get Premium Content Error:", error);
+        res.status(500).json({ success: false, message: "Server error fetching content" });
+    }
+};
+
+
+export const getPublicContent = async (req, res) => {
+    try {
+    
+        const allData = await Content.find({})
+            .sort({ createdAt: -1 }) 
+            .populate("author", "name avatar"); 
+
+        res.status(200).json({
+            success: true,
+            count: allData.length,
+            data: allData
         });
+
+    } catch (error) {
+        console.error("Get Public Content Error:", error);
+        res.status(500).json({ success: false, message: "Server error fetching content" });
     }
 };

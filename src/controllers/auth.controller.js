@@ -146,3 +146,39 @@ export const changePassword = async (req, res) => {
         res.status(500).json({ success: false, message: "Error changing password" });
     }
 };
+
+// ==========================================
+// 📌 Upgrade to Premium Controller (Mock Payment)
+// ==========================================
+export const upgradeToPremium = async (req, res) => {
+    try {
+        // 🧠 Developer Thought: protect মিডলওয়্যারের কারণে আমরা req.user পাচ্ছি।
+        const userId = req.user._id;
+
+        // ১. ডাটাবেস থেকে ইউজারকে খুঁজে বের করা
+        const user = await User.findById(userId);
+        
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        // ২. ইউজারের সাবস্ক্রিপশন স্ট্যাটাস আপডেট করা
+        user.subscriptionTier = 'premium';
+        
+        // ৩. ডাটাবেসে সেভ করা
+        await user.save();
+
+        // 🧠 Developer Thought: পাসওয়ার্ড যেন ফ্রন্টএন্ডে না যায়, তাই undefined করে দিচ্ছি
+        user.password = undefined;
+
+        res.status(200).json({ 
+            success: true, 
+            message: "Successfully upgraded to Premium!", 
+            user 
+        });
+
+    } catch (error) {
+        console.error("Upgrade Error:", error);
+        res.status(500).json({ success: false, message: "Server Error during upgrade" });
+    }
+};
