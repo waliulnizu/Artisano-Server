@@ -11,14 +11,14 @@ const contentSchema = new mongoose.Schema(
             type: String,
             required: [true, "Content description is required"],
         },
-      
         featuredImage: {
             type: String,
             required: [true, "Artwork featured image is required from Cloudinary"],    
         },
         category: {
             type: String,
-            enum: ['tutorial', 'tool', 'resource', 'article'],
+            // 👑 📌 ফিক্স: ফ্রন্টএন্ডের সাথে মিলিয়ে বড় হাতের ও ছোট হাতের সব বানানকে এখানে এনামে অনুমতি দেওয়া হলো
+            enum: ['Tutorial', 'Tool', 'Resource', 'Article', 'Brush', 'tutorial', 'tool', 'resource', 'article', 'brush'],
             required: true,
         },
         isPremiumOnly: {

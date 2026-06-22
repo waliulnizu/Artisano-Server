@@ -19,13 +19,13 @@ app.use(cookieParser());
 
 // --- ২. রাউটিং (Routes) ---
 // হেলথ চেক রাউট
-app.use('/api/v1', healthRoutes);
+app.use('/api', healthRoutes);
 
 // অথেনটিকেশন রাউট 
-app.use('/api/v1/auth', authRoutes);
+app.use('/api/auth', authRoutes);
 
 // 📌 ফিক্স: contentRoutes কে গ্লোবাল এরর হ্যান্ডলারের উপরে বসানো হলো
-app.use('/api/v1/content', contentRoutes);
+app.use('/api/content', contentRoutes);
 
 // --- ৩. গ্লোবাল এরর হ্যান্ডলার (ক্যাচ-অল) ---
 // 🧠 Developer Thought: 404 হ্যান্ডলার সবসময় ফাইলের একদম শেষে থাকতে হয়। 
