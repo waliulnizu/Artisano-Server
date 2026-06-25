@@ -6,8 +6,8 @@ import cookieParser from 'cookie-parser';
 import healthRoutes from './routes/index.routes.js';
 import authRoutes from './routes/auth.routes.js'; // আপনার ট্র্যাডিশনাল মেইল-পাসওয়ার্ড রাউট ফাইল
 import contentRoutes from './routes/content.routes.js';
-import paymentRoutes from './routes/payment.route.js'; 
-import commentRoutes from './routes/comment.routes.js'; 
+import paymentRoutes from './routes/payment.route.js';
+import commentRoutes from './routes/comment.routes.js';
 import wishlistRoutes from './routes/wishlist.routes.js';
 import reviewRoutes from './routes/review.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
@@ -20,7 +20,7 @@ const app = express();
 
 // --- ১. গ্লোবাল মিডলওয়্যার ---
 app.use(cors({
-    origin: 'http://localhost:3000',
+    origin: process.env.CLIENT_URL || "http://localhost:3000",
     credentials: true
 }));
 app.use(express.json());
@@ -40,9 +40,9 @@ app.use('/api/auth', authRoutes); // 🚀 ১. কাস্টম মেইল-�
 app.use('/api/auth', toNodeHandler(auth)); // 🚀 ২. ক্যাচ-অল Better-Auth নোড নিচে থাকবে
 
 // বাকি এক্সিস্টিং রাউটগুলো আগের মতোই ১০০% অক্ষত ও সচল থাকবে...
-app.use('/api/payment', paymentRoutes); 
+app.use('/api/payment', paymentRoutes);
 app.use('/api/content', contentRoutes);
-app.use('/api/comment', commentRoutes); 
+app.use('/api/comment', commentRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use("/api/review", reviewRoutes);
 app.use('/api/dashboard', dashboardRoutes);

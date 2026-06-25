@@ -1,23 +1,31 @@
 import express from "express";
-import { createContent, getPremiumContent, updateContent, deleteContent, getArtistAssets, getSingleArtwork } from "../controllers/content.controller.js";
+import { 
+  createContent, 
+  getPremiumContent, 
+  getPublicContent, // 👑 FIX: পাবলিক ফিড কন্ট্রোলার ইমপোর্ট করা হলো
+  updateContent, 
+  deleteContent, 
+  getArtistAssets, 
+  getSingleArtwork 
+} from "../controllers/content.controller.js";
 import { protect } from "../middlewares/auth.middleware.js"; 
 import { upload } from "../middlewares/multer.middleware.js";
 
 const router = express.Router();
 
 // =========================================================================
-// 🛣️ রাউট ১: সম্পূর্ণ পাবলিক ফিড (হোমপেজের জন্য)
+// 🛣️ রাউট ১: সম্পূর্ণ পাবলিক ফিড (সার্চ, ফিল্টার এবং লগইন ছাড়া সবার জন্য ওপেন 🔓)
 // =========================================================================
-router.get("/public-data", protect, getPremiumContent);
+router.get("/public-data", getPublicContent); 
 
 // =========================================================================
-// 🛣️ রাউট ২: ভিআইপি প্রিমিয়াম গ্যালারি (শুধু প্রো মেম্বারদের জন্য VIP রুম)
+// 🛣️ রাউট ২: ভিআইপি প্রিমিয়াম গ্যালারি (শুধু প্রিমিয়াম মেম্বার ও অ্যাডমিনদের জন্য 🔒)
 // =========================================================================
 router.get("/premium-data", protect, (req, res, next) => {
     if (req.user && (req.user.isPremium || req.user.role === "admin")) {
         return next(); 
     }
-    return res.status(403).json({ success: false, message: "Premium Access Denied" });
+    return res.status(403).json({ success: false, message: "Premium Access Denied. Upgrade to Pro/Premium room." });
 }, getPremiumContent);
 
 // =========================================================================
@@ -25,33 +33,27 @@ router.get("/premium-data", protect, (req, res, next) => {
 // =========================================================================
 router.post(
     "/create", 
-    upload.single("featuredImage"), // 🚀 ১. প্রথমে মাল্টার র-ডাটা ও ফাইল প্রসেস করবে
-    protect,                        // 🚀 ২. তারপর সিকিউরিটি গার্ড কুকি থেকে টোকেন ভেরিফাই করবে
+    upload.single("featuredImage"), 
+    protect,                        
     (req, res, next) => {
-        // 🚀 ৩. ডাবল রোল চেক: ইউজার অ্যাডমিন অথবা আর্টিস্ট কি না
         if (req.user && (req.user.role === "admin" || req.user.role === "artist")) {
             return next();
         }
         return res.status(403).json({ success: false, message: "Access Denied! Only Admins and Artists can upload." });
     },
-    createContent                   // 🚀 ৪. সব ভ্যালিডেশন শেষে ফাইনাল কন্ট্রোলার
+    createContent                   
 );
 
-// =========================================================================
 // 🛣️ রাউট ৪: কন্টেন্ট এডিট/আপডেট করার জন্য (CRUD - Update)
-// 👑 📌 প্রফেশনাল ফিক্স: এখানেও 'upload.single' আগে আনা হয়েছে যেন ইমেজসহ এডিট করা যায়
-// =========================================================================
 router.put("/:id", upload.single("featuredImage"), protect, updateContent);
 
-// =========================================================================
 // 🛣️ রাউট ৫: কন্টেন্ট ডিলিট করার জন্য (CRUD - Delete)
-// =========================================================================
 router.delete("/:id", protect, deleteContent);
 
+// 🛣️ রাউট ৬: লগইন করা আর্টিস্টের নিজস্ব এসেট দেখার জন্য
 router.get("/artist-assets", protect, getArtistAssets);
 
-// ২. ফাইলের মাঝামাঝি (অবশ্যই ডিলিট/আপডেট রাউটের আশেপাশে) এই পাবলিক রাউটটি যুক্ত করুন
-// এটি প্রটেক্টেড নয়, কারণ লগইন ছাড়াও যে কেউ আর্টওয়ার্কের ডিটেইলস দেখতে পারে
+// 🛣️ রাউট ৭: সিঙ্গেল আর্টওয়ার্ক ভিউ নোড (🔓 পাবলিক এক্সেস)
 router.get("/:id", getSingleArtwork);
 
 export default router;
