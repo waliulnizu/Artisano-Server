@@ -1,23 +1,47 @@
 import express from 'express';
-import { registerUser, loginUser, getMe, logoutUser, changePassword, upgradeToPremium } from '../controllers/auth.controller.js'; // getMe ইমপোর্ট করা হলো
+import { 
+  registerUser, 
+  loginUser, 
+  getMe, 
+  logoutUser, 
+  changePassword, 
+  upgradeToPremium,
+  updateMyRole,          // 👑 NEW: Google OAuth-এর pending_role cookie থেকে role update
+  getAllUsersByAdmin,      
+  updateUserFieldsByAdmin   
+} from '../controllers/auth.controller.js'; 
 import { updateProfile } from "../controllers/user.controller.js";
-import { protect } from '../middlewares/auth.middleware.js'; // দারোয়ানকে (guard) ইমপোর্ট করা হলো
+import { protect } from '../middlewares/auth.middleware.js'; 
 import { upload } from '../middlewares/multer.middleware.js';
 
 const router = express.Router();
 
-// 📌 Public Routes (যে কেউ আসতে পারবে, কোনো গার্ড নেই)
+// 📌 Public Routes
 router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.post('/logout', logoutUser);
-router.patch("/change-password", protect, changePassword)
 
-// 📌 Protected Routes (এখানে আগে দারোয়ান চেক করবে, তারপর কন্ট্রোলারে যাবে)
-// লজিক: যখনই কেউ GET /me তে রিকোয়েস্ট পাঠাবে, প্রথমে protect ফাংশন রান হবে। 
-// protect যদি next() কল করে, তবেই getMe ফাংশন রান হবে।
+// 📌 Protected User Routes
 router.get('/me', protect, getMe);
+router.patch("/change-password", protect, changePassword);
 router.patch("/update-profile", protect, upload.single("profileImage"), updateProfile);
-// 🧠 Developer Thought: এটি একটি সুরক্ষিত (protected) রাউট হওয়া উচিত, তাই protect মিডলওয়্যার ব্যবহার করা হলো।
 router.post('/upgrade', protect, upgradeToPremium);
+router.patch('/update-role', protect, updateMyRole); // 👑 NEW: Google user-এর pending role apply করার route
+
+// =========================================================================
+// 👑 📌 এডমিন এক্সক্লুসিভ গেটওয়ে (Admin Only Protected Routes)
+// =========================================================================
+
+// ইনলাইন রোল চেকার দারোয়ান মিডলওয়্যার
+const isAdmin = (req, res, next) => {
+    if (req.user && req.user.role === "admin") {
+        return next();
+    }
+    return res.status(403).json({ success: false, message: "Access Denied! Admin credentials required." });
+};
+
+// অ্যাডমিন এন্ডপয়েন্টস
+router.get('/admin/users', protect, isAdmin, getAllUsersByAdmin);
+router.put('/admin/users/:id', protect, isAdmin, updateUserFieldsByAdmin);
 
 export default router;

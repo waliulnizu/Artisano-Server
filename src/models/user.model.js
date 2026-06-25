@@ -35,7 +35,13 @@ const userSchema = new mongoose.Schema(
         profileImage: {
             type: String,
             default: 'https://i.ibb.co/4pDNDk1/avatar.png', // ডিফল্ট একটি ডামি ছবি
-        }
+        },
+        wishlist: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'Content'
+            }
+        ]
     },
     {
         timestamps: true, // এটি দিলে createdAt এবং updatedAt নামে দুটি ফিল্ড অটোমেটিক তৈরি হবে

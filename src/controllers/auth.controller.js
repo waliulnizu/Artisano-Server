@@ -3,7 +3,7 @@ import { generateToken, cookieOptions } from '../utils/auth.utils.js';
 import bcrypt from 'bcryptjs';
 
 // ==========================================
-// 📌 User Registration Controller
+// 📌 ১. User Registration Controller
 // ==========================================
 export const registerUser = async (req, res) => {
     try {
@@ -26,15 +26,20 @@ export const registerUser = async (req, res) => {
         });
 
         const token = generateToken(user._id);
-
-        // 📌 এখানে আমরা উপরের বানানো cookieOptions ব্যবহার করেছি
-        res.cookie('token', token, cookieOptions);
+        
+        // 🧠 🚀 UPDATE: রেজিস্ট্রেশনের সময়ই ডাইনামিক কুকি অপশন পাস করা হলো
+        res.cookie('token', token, {
+            ...cookieOptions,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax'
+        });
 
         user.password = undefined;
 
         res.status(201).json({
             success: true,
             message: 'Registration successful!',
+            token, // 👑 FIX: client-side cookie set করার জন্য token পাঠানো হলো
             user,
         });
 
@@ -45,7 +50,7 @@ export const registerUser = async (req, res) => {
 };
 
 // ==========================================
-// 📌 User Login Controller
+// 📌 ২. User Login Controller
 // ==========================================
 export const loginUser = async (req, res) => {
     try {
@@ -58,19 +63,31 @@ export const loginUser = async (req, res) => {
         const user = await User.findOne({ email }).select('+password');
         
         if (!user) {
-            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+            return res.status(401).json({ success: false, message: 'No account found with this email. Please register first.' });
+        }
+
+        // 👑 FIX: Google OAuth user password দিয়ে login করার চেষ্টা করলে helpful error
+        if (!user.password) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'This account was created with Google. Please use "Continue with Google" to sign in.' 
+            });
         }
 
         const isMatch = await user.comparePassword(password, user.password);
         
         if (!isMatch) {
-            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+            return res.status(401).json({ success: false, message: 'Incorrect password. Please try again.' });
         }
 
         const token = generateToken(user._id);
-
-        // 📌 এখানেও আমরা উপরের বানানো cookieOptions ব্যবহার করেছি
-        res.cookie('token', token, cookieOptions);
+        
+        // 🧠 🚀 UPDATE: লগইন সেশন ব্রাউজারে লক করতে ডাইনামিক কুকি অপশন এনশিওর করা হলো
+        res.cookie('token', token, {
+            ...cookieOptions,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax'
+        });
 
         user.password = undefined;
 
@@ -87,17 +104,15 @@ export const loginUser = async (req, res) => {
 };
 
 // ==========================================
-// 📌 Get Current User Controller (/me)
+// 📌 ৩. Get Current User Controller (/me)
 // ==========================================
 export const getMe = async (req, res) => {
     try {
         const user = req.user;
-
         res.status(200).json({
             success: true,
             user,
         });
-
     } catch (error) {
         console.error('Get Me Error:', error);
         res.status(500).json({ 
@@ -107,25 +122,28 @@ export const getMe = async (req, res) => {
     }
 };
 
-// 📌 Logout Controller
+// ==========================================
+// 📌 ৪. Logout Controller
+// ==========================================
 export const logoutUser = async (req, res) => {
     try {
-        // কুকি থেকে টোকেনটি মুছে ফেলার জন্য আমরা একই নামের কুকি সেট করব কিন্তু মেয়াদ বা maxAge শূন্য করে দেব
+        // 🧠 🚀 UPDATE: লগআউট করার সময় কুকি প্রোফাইল হুবহু ম্যাচ করে ডিলিট করা হলো
         res.cookie('token', '', {
+            path: '/',
             httpOnly: true,
-            expires: new Date(0), // এখনই এক্সপায়ার করে দাও
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            expires: new Date(0), 
         });
-
         res.status(200).json({ success: true, message: 'Logged out successfully!' });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error during logout' });
     }
 };
 
-
-
-
-// পাসওয়ার্ড পরিবর্তনের কন্ট্রোলার
+// ==========================================
+// 📌 ৫. Change Password Controller
+// ==========================================
 export const changePassword = async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
@@ -136,8 +154,6 @@ export const changePassword = async (req, res) => {
             return res.status(400).json({ success: false, message: "Current password does not match" });
         }
 
-        // const salt = await bcrypt.genSalt(10);
-        // user.password = await bcrypt.hash(newPassword, salt);
         user.password = newPassword;
         await user.save();
 
@@ -148,27 +164,21 @@ export const changePassword = async (req, res) => {
 };
 
 // ==========================================
-// 📌 Upgrade to Premium Controller (Mock Payment)
+// 📌 ৬. Upgrade to Premium Controller (Mock Payment)
 // ==========================================
 export const upgradeToPremium = async (req, res) => {
     try {
-        // 🧠 Developer Thought: protect মিডলওয়্যারের কারণে আমরা req.user পাচ্ছি।
         const userId = req.user._id;
-
-        // ১. ডাটাবেস থেকে ইউজারকে খুঁজে বের করা
         const user = await User.findById(userId);
         
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        // ২. ইউজারের সাবস্ক্রিপশন স্ট্যাটাস আপডেট করা
         user.subscriptionTier = 'premium';
+        user.isPremium = true; 
         
-        // ৩. ডাটাবেসে সেভ করা
         await user.save();
-
-        // 🧠 Developer Thought: পাসওয়ার্ড যেন ফ্রন্টএন্ডে না যায়, তাই undefined করে দিচ্ছি
         user.password = undefined;
 
         res.status(200).json({ 
@@ -176,9 +186,111 @@ export const upgradeToPremium = async (req, res) => {
             message: "Successfully upgraded to Premium!", 
             user 
         });
-
     } catch (error) {
         console.error("Upgrade Error:", error);
         res.status(500).json({ success: false, message: "Server Error during upgrade" });
+    }
+};
+
+// =========================================================================
+// 👑 📌 নতুন অ্যাডমিন কন্ট্রোলার ৭: ডাটাবেসের সমস্ত ইউজার লিস্ট ফেচ করা
+// =========================================================================
+export const getAllUsersByAdmin = async (req, res) => {
+    try {
+        const users = await User.find({}).select("-password").sort({ createdAt: -1 });
+        res.status(200).json({
+            success: true,
+            count: users.length,
+            data: users
+        });
+    } catch (error) {
+        console.error("Get All Users Admin Error:", error);
+        res.status(500).json({ success: false, message: "Server Error while fetching user directories" });
+    }
+};
+
+// =========================================================================
+// 👑 📌 নতুন অ্যাডমিন কন্ট্রোলার ৮: অ্যাডমিন প্যানেল থেকে রোল/প্রিমিয়াম স্ট্যাটাস আপডেট করা
+// =========================================================================
+export const updateUserFieldsByAdmin = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { role, isPremium } = req.body;
+
+        const user = await User.findById(id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        if (user._id.toString() === req.user._id.toString() && role && role !== "admin") {
+            return res.status(400).json({ success: false, message: "Safety Alert: You cannot remove your own Admin privileges!" });
+        }
+
+        if (role) user.role = role;
+        
+        if (isPremium !== undefined) {
+            user.isPremium = isPremium;
+            user.subscriptionTier = isPremium ? 'premium' : 'free';
+        }
+
+        await user.save();
+        user.password = undefined;
+
+        res.status(200).json({ 
+            success: true, 
+            message: `Account of ${user.name} successfully updated! 🛠️`, 
+            user 
+        });
+    } catch (error) {
+        console.error("Admin User Update Error:", error);
+        res.status(500).json({ success: false, message: "Server Error during administrative update" });
+    }
+};
+
+// =========================================================================
+// 👑 📌 নতুন কন্ট্রোলার: Google OAuth user-এর pending role apply করা
+// =========================================================================
+// Dashboard load হলে pending_role cookie check করে এই route call হয়
+export const updateMyRole = async (req, res) => {
+    try {
+        const { role } = req.body;
+
+        // শুধু valid role accept করবে
+        if (!role || !["user", "artist"].includes(role)) {
+            return res.status(400).json({ success: false, message: "Invalid role value." });
+        }
+
+        // req.user Better-Auth বা JWT middleware থেকে আসে
+        const userId = req.user?._id || req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Not authorized." });
+        }
+
+        // MongoDB এ সরাসরি findByIdAndUpdate — Better-Auth user হলেও কাজ করবে
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { role },
+            { new: true, select: "-password" }
+        );
+
+        if (!updatedUser) {
+            // Better-Auth user হলে mongoose _id string format হতে পারে
+            // তাই email দিয়েও try করো
+            const byEmail = await User.findOneAndUpdate(
+                { email: req.user.email },
+                { role },
+                { new: true, select: "-password" }
+            );
+            if (!byEmail) {
+                return res.status(404).json({ success: false, message: "User not found." });
+            }
+            return res.status(200).json({ success: true, user: byEmail });
+        }
+
+        res.status(200).json({ success: true, user: updatedUser });
+
+    } catch (error) {
+        console.error("Update Role Error:", error);
+        res.status(500).json({ success: false, message: "Server Error while updating role." });
     }
 };
