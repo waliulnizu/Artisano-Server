@@ -12,6 +12,7 @@ import wishlistRoutes from './routes/wishlist.routes.js';
 import reviewRoutes from './routes/review.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
 
+import transactionRouter from "./routes/transaction.routes.js";
 // 👑 ADD: ডাইনামিক নোড হ্যান্ডলার এবং কোর কনফিগ সরাসরি মেইন ফাইলে মাউন্ট করার জন্য ইম্পোর্ট
 import { auth } from "./config/auth.config.js";
 import { toNodeHandler } from "better-auth/node";
@@ -46,6 +47,7 @@ app.use('/api/comment', commentRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use("/api/review", reviewRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use("/api/transactions", transactionRouter);
 
 // --- ৩. গ্লোবাল এরর হ্যান্ডলার (ক্যাচ-অল) ---
 app.use((req, res, next) => {
