@@ -13,6 +13,21 @@ import reviewRoutes from './routes/review.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
 
 import transactionRouter from "./routes/transaction.routes.js";
+
+import mockPaymentRouter from "./routes/mockPayment.routes.js";
+import adminRouter from "./routes/admin.routes.js";
+import settingsRouter from "./routes/settings.routes.js";
+
+
+
+
+
+
+
+
+// ২. আপনার এক্সিস্টিং app.use("/api/auth", authRouter) লাইনের ঠিক নিচে এটি যোগ করুন:
+
+
 // 👑 ADD: ডাইনামিক নোড হ্যান্ডলার এবং কোর কনফিগ সরাসরি মেইন ফাইলে মাউন্ট করার জন্য ইম্পোর্ট
 import { auth } from "./config/auth.config.js";
 import { toNodeHandler } from "better-auth/node";
@@ -48,6 +63,12 @@ app.use('/api/wishlist', wishlistRoutes);
 app.use("/api/review", reviewRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use("/api/transactions", transactionRouter);
+app.use("/api/mock-payment", mockPaymentRouter);
+app.use("/api/admin-control", adminRouter);
+app.use("/api/auth", adminRouter);
+app.use("/api/settings", settingsRouter);
+
+
 
 // --- ৩. গ্লোবাল এরর হ্যান্ডলার (ক্যাচ-অল) ---
 app.use((req, res, next) => {

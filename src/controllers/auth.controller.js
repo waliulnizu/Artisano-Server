@@ -27,7 +27,6 @@ export const registerUser = async (req, res) => {
 
         const token = generateToken(user._id);
         
-        // 🧠 🚀 UPDATE: রেজিস্ট্রেশনের সময়ই ডাইনামিক কুকি অপশন পাস করা হলো
         res.cookie('token', token, {
             ...cookieOptions,
             secure: process.env.NODE_ENV === 'production',
@@ -39,7 +38,7 @@ export const registerUser = async (req, res) => {
         res.status(201).json({
             success: true,
             message: 'Registration successful!',
-            token, // 👑 FIX: client-side cookie set করার জন্য token পাঠানো হলো
+            token, 
             user,
         });
 
@@ -66,7 +65,6 @@ export const loginUser = async (req, res) => {
             return res.status(401).json({ success: false, message: 'No account found with this email. Please register first.' });
         }
 
-        // 👑 FIX: Google OAuth user password দিয়ে login করার চেষ্টা করলে helpful error
         if (!user.password) {
             return res.status(401).json({ 
                 success: false, 
@@ -82,7 +80,6 @@ export const loginUser = async (req, res) => {
 
         const token = generateToken(user._id);
         
-        // 🧠 🚀 UPDATE: লগইন সেশন ব্রাউজারে লক করতে ডাইনামিক কুকি অপশন এনশিওর করা হলো
         res.cookie('token', token, {
             ...cookieOptions,
             secure: process.env.NODE_ENV === 'production',
@@ -127,7 +124,6 @@ export const getMe = async (req, res) => {
 // ==========================================
 export const logoutUser = async (req, res) => {
     try {
-        // 🧠 🚀 UPDATE: লগআউট করার সময় কুকি প্রোফাইল হুবহু ম্যাচ করে ডিলিট করা হলো
         res.cookie('token', '', {
             path: '/',
             httpOnly: true,
@@ -193,7 +189,7 @@ export const upgradeToPremium = async (req, res) => {
 };
 
 // =========================================================================
-// 👑 📌 নতুন অ্যাডমিন কন্ট্রোলার ৭: ডাটাবেসের সমস্ত ইউজার লিস্ট ফেচ করা
+// 👑 📌 অ্যাডমিন কন্ট্রোলার ৭: ডাটাবেসের সমস্ত ইউজার লিস্ট ফেচ করা
 // =========================================================================
 export const getAllUsersByAdmin = async (req, res) => {
     try {
@@ -210,7 +206,7 @@ export const getAllUsersByAdmin = async (req, res) => {
 };
 
 // =========================================================================
-// 👑 📌 নতুন অ্যাডমিন কন্ট্রোলার ৮: অ্যাডমিন প্যানেল থেকে রোল/প্রিমিয়াম স্ট্যাটাস আপডেট করা
+// 👑 📌 অ্যাডমিন কন্ট্রোলার ৮: অ্যাডমিন প্যানেল থেকে রোল/প্রিমিয়াম স্ট্যাটাস আপডেট করা
 // =========================================================================
 export const updateUserFieldsByAdmin = async (req, res) => {
     try {
@@ -248,44 +244,62 @@ export const updateUserFieldsByAdmin = async (req, res) => {
 };
 
 // =========================================================================
-// 👑 📌 নতুন কন্ট্রোলার: Google OAuth user-এর pending role apply করা
+// 👑 📌 ৪. আপডেট করা কন্ট্রোলার ৯: Google OAuth user-এর pending role apply করা
 // =========================================================================
-// Dashboard load হলে pending_role cookie check করে এই route call হয়
 export const updateMyRole = async (req, res) => {
     try {
         const { role } = req.body;
 
-        // শুধু valid role accept করবে
         if (!role || !["user", "artist"].includes(role)) {
             return res.status(400).json({ success: false, message: "Invalid role value." });
         }
 
-        // req.user Better-Auth বা JWT middleware থেকে আসে
         const userId = req.user?._id || req.user?.id;
         if (!userId) {
             return res.status(401).json({ success: false, message: "Not authorized." });
         }
 
-        // MongoDB এ সরাসরি findByIdAndUpdate — Better-Auth user হলেও কাজ করবে
-        const updatedUser = await User.findByIdAndUpdate(
+        // 🛡️ [ROLE OVERWRITE SHIELD]: ডাটাবেস থেকে ইউজারের এক্সিস্টিং ডাটা আগে রিড করা
+        const checkUser = await User.findById(userId);
+        
+        // 🚨 যদি ইউজার অলরেডি একজন "artist" বা "admin" হয়, তবে তার রোল কোনোভাবেই "user" এ নামানো যাবে না!
+        if (checkUser && (checkUser.role === "artist" || checkUser.role === "admin") && role === "user") {
+            console.log(`🛡️ Role Shield Triggered for ${checkUser.name}. Preventing reset back to standard user.`);
+            
+            // সেশন যেন লক না হয়, তাই তার এক্সিস্টিং রোলটাই রেসপন্সে সাকসেসফুলি ব্যাক করা হলো
+            return res.status(200).json({ 
+                success: true, 
+                message: "Welcome back! Retaining your authorized creator privileges.", 
+                user: checkUser 
+            });
+        }
+
+        // নতুন বা আপগ্রেডেড ইউজারের জন্য ফাইনাল আপডেট এক্সিকিউশন
+        let updatedUser = await User.findByIdAndUpdate(
             userId,
             { role },
             { new: true, select: "-password" }
         );
 
         if (!updatedUser) {
-            // Better-Auth user হলে mongoose _id string format হতে পারে
-            // তাই email দিয়েও try করো
-            const byEmail = await User.findOneAndUpdate(
+            updatedUser = await User.findOneAndUpdate(
                 { email: req.user.email },
                 { role },
                 { new: true, select: "-password" }
             );
-            if (!byEmail) {
-                return res.status(404).json({ success: false, message: "User not found." });
-            }
-            return res.status(200).json({ success: true, user: byEmail });
         }
+
+        if (!updatedUser) {
+            return res.status(404).json({ success: false, message: "User not found." });
+        }
+
+        // 🔄 [SESSION SYNC TOKEN]: রোল চেঞ্জের পর কুকিতে ফ্রেশ আইডেন্টিটি টোকেন পুশ করা হলো
+        const token = generateToken(updatedUser._id);
+        res.cookie('token', token, {
+            ...cookieOptions,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax'
+        });
 
         res.status(200).json({ success: true, user: updatedUser });
 
