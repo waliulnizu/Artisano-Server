@@ -6,9 +6,6 @@ import Comment from "../models/comment.model.js";
 export const createComment = async (req, res) => {
   try {
     const { artworkId, text } = req.body;
-    
-    // req.user আসছে আমাদের দারোয়ান (protect middleware) থেকে। 
-    // ইউজার লগইন না থাকলে সে কমেন্ট করতে পারবে না।
     const userId = req.user._id; 
 
     // ডাটাবেসে কমেন্ট ইনসার্ট করা
@@ -18,7 +15,6 @@ export const createComment = async (req, res) => {
       text
     });
 
-    // ফ্রন্টঅ্যান্ডে ইনস্ট্যান্ট দেখানোর জন্য ইউজারের বেসিক ডাটা পপুলেট করে নেওয়া
     const populatedComment = await newComment.populate("user", "name profileImage");
 
     return res.status(201).json({
@@ -33,15 +29,12 @@ export const createComment = async (req, res) => {
 };
 
 // =========================================================================
-// 📥 ২. নির্দিষ্ট আর্টওয়ার্কের সব কমেন্ট তুলে আনার লজিক (Get Comments)
+// 📥 ২. নির্দিষ্ট আর্টওয়ার্কের সব কমেন্ট তুলে আনার লজিক (Get Comments)
 // =========================================================================
 export const getArtworkComments = async (req, res) => {
   try {
     const { artworkId } = req.params;
 
-    // মঙ্গুজের লেটেস্ট ডকস অনুযায়ী .populate() চেইনিং ব্যবহার করে 
-    // কমেন্টকারীর অবজেক্ট থেকে শুধু name এবং profileImage তুলে আনা হলো (পাসওয়ার্ড বা ইমেইল হাইড রাখতে)
-    // .sort({ createdAt: -1 }) দেওয়া হয়েছে যেন একদম নতুন কমেন্টটি সবার ওপরে দেখায়।
     const comments = await Comment.find({ artworkId })
       .populate("user", "name profileImage")
       .sort({ createdAt: -1 });
@@ -54,5 +47,67 @@ export const getArtworkComments = async (req, res) => {
   } catch (error) {
     console.error("Get Comments Error:", error);
     return res.status(500).json({ success: false, message: "Error fetching comments for this asset." });
+  }
+};
+
+// =========================================================================
+// ✏️ ৩. কমেন্ট এডিট করার লজিক (Update Comment)
+// =========================================================================
+export const updateComment = async (req, res) => {
+  try {
+    const { commentId, text } = req.body;
+    const userId = req.user._id;
+
+    const comment = await Comment.findById(commentId);
+    if (!comment) {
+      return res.status(404).json({ success: false, message: "Comment not found." });
+    }
+
+    // 🔒 সিকিউরিটি ভেরিফিকেশন: String কনভার্সন দিয়ে টাইপ মিসম্যাচ লক ফিক্স
+    if (String(comment.user) !== String(userId)) {
+      return res.status(403).json({ success: false, message: "Unauthorized asset manipulation block." });
+    }
+
+    comment.text = text;
+    await comment.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Comment modified successfully.",
+      data: comment
+    });
+  } catch (error) {
+    console.error("Update Comment Error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error editing comment." });
+  }
+};
+
+// =========================================================================
+// 🗑️ ৪. কমেন্ট ডিলিট করার লজিক (Delete Comment)
+// =========================================================================
+export const deleteComment = async (req, res) => {
+  try {
+    const { commentId } = req.body;
+    const userId = req.user._id;
+
+    const comment = await Comment.findById(commentId);
+    if (!comment) {
+      return res.status(404).json({ success: false, message: "Comment not found." });
+    }
+
+    // 🔒 সিকিউরিটি ভেরিফিকেশন
+    if (String(comment.user) !== String(userId)) {
+      return res.status(403).json({ success: false, message: "Unauthorized manipulation block." });
+    }
+
+    await comment.deleteOne();
+
+    return res.status(200).json({
+      success: true,
+      message: "Comment wiped from asset history successfully."
+    });
+  } catch (error) {
+    console.error("Delete Comment Error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error dropping comment." });
   }
 };
