@@ -58,7 +58,7 @@ app.use('/api', healthRoutes);
 // 👑 THE MASTER SEQUENCING FIX: কাস্টম লগইন এবং Better-Auth এর সহাবস্থান
 // =========================================================================
 app.use('/api/auth', authRoutes); 
-app.use('/api/auth', toNodeHandler(auth)); 
+app.all('/api/auth/*', toNodeHandler(auth)); 
 
 // বাকি এক্সিস্টিং রাউটগুলো
 app.use('/api/payment', paymentRoutes);

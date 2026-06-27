@@ -6,12 +6,15 @@ import mongoose from "mongoose";
 
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
-// 👑 [DYNAMIC ORIGINS FIX]: লোকালহোস্ট এবং লাইভ ভার্সেল দুই জায়গার রিকোয়েস্ট হ্যান্ডেল করার জন্য
+// 👑 [DYNAMIC ORIGINS PROD FIX]: ব্যাকএন্ড ও ফ্রন্টএন্ড সব লাইভ লিঙ্ক এখানে লক করা হলো
 const trustedOriginsList = [
-    "http://localhost:3000",          // লোকাল ফ্রন্টএন্ড ব্যাকআপ
-    process.env.NEXT_PUBLIC_APP_URL,  // লাইভ ফ্রন্টএন্ড (https://artisano.vercel.app)
-    process.env.CLIENT_URL            // ব্যাকআপ লাইভ ফ্রন্টএন্ড
-].filter(Boolean);                    // ফাঁকা বা undefined মানগুলো ফিল্টার করে বাদ দেবে
+    "http://localhost:3000",          
+    "http://localhost:5000",          
+    "https://artisano.vercel.app",             // লাইভ ফ্রন্টএন্ড
+    "https://artisano-server.onrender.com",    // 🚨 মাস্ট: লাইভ ব্যাকএন্ড নিজের ডোমেইন
+    process.env.NEXT_PUBLIC_APP_URL,  
+    process.env.CLIENT_URL            
+].filter(Boolean);                    
 
 export const auth = betterAuth({
     // ডাটাবেস অ্যাডাপ্টার
@@ -19,8 +22,8 @@ export const auth = betterAuth({
         get: (_, prop) => mongoose.connection.db[prop]
     })),
     
-    // 👑 লোকালহোস্টে BETTER_AUTH_URL না থাকলে অটোমেটিক লোকাল ব্যাকআপ সেট হবে
-    baseURL: process.env.BETTER_AUTH_URL || "http://localhost:5000", 
+    // 👑 [CRITICAL LIVE FIX]: লাইভ প্রোডাকশনের জন্য সম্পূর্ণ এপিআই রুটটি ফলব্যাক হিসেবে এনফোর্স করা হলো
+    baseURL: process.env.BETTER_AUTH_URL || "https://artisano-server.onrender.com/api/auth", 
     
     // নতুন ডাইনামিক অ্যারে এখানে বসানো হলো
     trustedOrigins: trustedOriginsList,
@@ -41,7 +44,7 @@ export const auth = betterAuth({
     },
 
     // =========================================================
-    // 📦 MongoDB Collection Mapping
+    // 📦 MongoDB Collection Mapping (বাকি কোড আগের মতোই থাকবে...)
     // =========================================================
     user: {
         modelName: "google_users",
@@ -62,9 +65,6 @@ export const auth = betterAuth({
         modelName: "google_verifications",
     },
 
-    // =========================================================================
-    // 👑 ওআউথ ইনকামিং রিকোয়েস্ট রেফারার ট্র্যাকিং হুক
-    // =========================================================================
     databaseHooks: {
         user: {
             create: {
