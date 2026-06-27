@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
-// --- রাউটগুলো মডার্ন নিয়মে ইম্পোর্ট করা ---
+// --- রাউটগুলো মডার্ন নিয়মে ইম্পোর্ট করা ---
 import healthRoutes from './routes/index.routes.js';
 import authRoutes from './routes/auth.routes.js'; 
 import contentRoutes from './routes/content.routes.js';
@@ -29,8 +29,9 @@ const app = express();
 // --- ১. গ্লোবাল মিডলওয়্যার (ডাইনামিক CORS কনফিগারেশন) ---
 const allowedOrigins = [
     "http://localhost:3000",                                 // লোকাল ডেভেলপমেন্ট ফ্রন্টএন্ড
+    "https://artisano.vercel.app",                           // লাইভ ফ্রন্টএন্ড সেফটি লক
     process.env.CLIENT_URL                                   // রেন্ডার ড্যাশবোর্ড থেকে আসা লাইভ ভার্সেল ডোমেন
-].filter(Boolean); // কোনো ভ্যালু যদি undefined বা ফাঁকা থাকে, তবে তা ফিল্টার করে বাদ দিয়ে দেবে
+].filter(Boolean); // কোনো ভ্যালু যদি undefined বা ফাঁকা থাকে, তবে তা ফিল্টার করে বাদ দিয়ে দেবে
 
 app.use(cors({
     origin: function (origin, callback) {
@@ -58,7 +59,9 @@ app.use('/api', healthRoutes);
 // 👑 THE MASTER SEQUENCING FIX: কাস্টম লগইন এবং Better-Auth এর সহাবস্থান
 // =========================================================================
 app.use('/api/auth', authRoutes); 
-app.all('/api/auth/*', toNodeHandler(auth)); 
+
+// 🚀 [FIXED]: এক্সপ্রেস ৪.এক্স এর ইন্টারনাল পাথ-টু-রেজএক্স ক্র্যাশ সমাধান করা হলো
+app.use('/api/auth*', toNodeHandler(auth)); 
 
 // বাকি এক্সিস্টিং রাউটগুলো
 app.use('/api/payment', paymentRoutes);
