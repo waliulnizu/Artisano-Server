@@ -24,6 +24,7 @@ export const auth = betterAuth({
     
     // 👑 [CRITICAL LIVE FIX]: লাইভ প্রোডাকশনের জন্য সম্পূর্ণ এপিআই রুটটি ফলব্যাক হিসেবে এনফোর্স করা হলো
     baseURL: process.env.BETTER_AUTH_URL || "https://artisano-server.onrender.com/api/auth", 
+    trustHost: true, // 🚨 Vercel/Render-এর মতো Proxy সার্ভারে HTTP/HTTPS কনফ্লিক্ট দূর করতে ఇది মাস্ট!
     
     // নতুন ডাইনামিক অ্যারে এখানে বসানো হলো
     trustedOrigins: trustedOriginsList,
