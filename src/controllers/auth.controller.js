@@ -1,6 +1,10 @@
-import User from '../models/user.model.js';
 import { generateToken, cookieOptions } from '../utils/auth.utils.js';
 import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
+
+// 🔍 ১. ডাইনামিক র (Raw) ডাটাবেস কালেকশন ড্রাইভার্স (কোনো স্কিমা ইম্পোর্ট ক্র্যাশ হবে না)
+const getRawUsersCollection = () => mongoose.connection.db.collection("users");
+const getRawGoogleUsersCollection = () => mongoose.connection.db.collection("google_users");
 
 // ==========================================
 // 📌 ১. User Registration Controller
@@ -13,19 +17,30 @@ export const registerUser = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Please provide all required fields.' });
         }
 
-        const existingUser = await User.findOne({ email });
+        const usersCollection = getRawUsersCollection();
+        const existingUser = await usersCollection.findOne({ email });
+        
         if (existingUser) {
             return res.status(400).json({ success: false, message: 'Email is already registered. Please login.' });
         }
 
-        const user = await User.create({
+        // পাসওয়ার্ড হ্যাশ করা
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const newUser = {
             name,
             email,
-            password,
+            password: hashedPassword,
             role: role || 'user',
-        });
+            subscriptionTier: 'free',
+            isPremium: false,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
 
-        const token = generateToken(user._id);
+        const result = await usersCollection.insertOne(newUser);
+        const token = generateToken(result.insertedId);
         
         res.cookie('token', token, {
             ...cookieOptions,
@@ -33,13 +48,13 @@ export const registerUser = async (req, res) => {
             sameSite: 'lax'
         });
 
-        user.password = undefined;
+        delete newUser.password;
 
         res.status(201).json({
             success: true,
             message: 'Registration successful!',
             token, 
-            user,
+            user: { _id: result.insertedId, ...newUser },
         });
 
     } catch (error) {
@@ -49,7 +64,7 @@ export const registerUser = async (req, res) => {
 };
 
 // ==========================================
-// 📌 ২. User Login Controller
+// 📌 ২. User Login Controller (With Raw Google Sync Fallback 🔄)
 // ==========================================
 export const loginUser = async (req, res) => {
     try {
@@ -59,9 +74,23 @@ export const loginUser = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Please provide email and password' });
         }
 
-        const user = await User.findOne({ email }).select('+password');
+        const usersCollection = getRawUsersCollection();
+        const user = await usersCollection.findOne({ email });
         
         if (!user) {
+            try {
+                const googleCollection = getRawGoogleUsersCollection();
+                const googleUser = await googleCollection.findOne({ email });
+                if (googleUser) {
+                    return res.status(401).json({ 
+                        success: false, 
+                        message: 'This account was created via Google. Please click "Continue with Google" to log in securely! 🌐' 
+                    });
+                }
+            } catch (err) {
+                console.log("Google user collection raw fallback skip.");
+            }
+
             return res.status(401).json({ success: false, message: 'No account found with this email. Please register first.' });
         }
 
@@ -72,8 +101,7 @@ export const loginUser = async (req, res) => {
             });
         }
 
-        const isMatch = await user.comparePassword(password, user.password);
-        
+        const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(401).json({ success: false, message: 'Incorrect password. Please try again.' });
         }
@@ -86,7 +114,7 @@ export const loginUser = async (req, res) => {
             sameSite: 'lax'
         });
 
-        user.password = undefined;
+        delete user.password;
 
         res.status(200).json({
             success: true,
@@ -100,12 +128,47 @@ export const loginUser = async (req, res) => {
     }
 };
 
-// ==========================================
-// 📌 ৩. Get Current User Controller (/me)
-// ==========================================
+// =========================================================================
+// 📌 ৩. Get Current User Controller (/me) -> [🛡️ AUTOMATIC RAW PROFILE SYNC ENGINE]
+// =========================================================================
 export const getMe = async (req, res) => {
     try {
-        const user = req.user;
+        let user = req.user;
+
+        if (!user) {
+            return res.status(401).json({ success: false, message: "Session expired or invalid token." });
+        }
+
+        const targetId = user._id ? new mongoose.Types.ObjectId(user._id) : new mongoose.Types.ObjectId(user.id);
+        const usersCollection = getRawUsersCollection();
+        const mainUserCheck = await usersCollection.findOne({ _id: targetId });
+        
+        if (!mainUserCheck && user.email) {
+            console.log(`⚡ Auto-Sync Triggered: Mirroring Google profile for ${user.email} into main users collection.`);
+            
+            const googleCollection = getRawGoogleUsersCollection();
+            const gUser = await googleCollection.findOne({ email: user.email });
+
+            const clonedUser = {
+                _id: gUser?._id || targetId,
+                name: gUser?.name || user.name || "Artisano Member",
+                email: user.email,
+                profileImage: gUser?.image || user.image || "",
+                role: gUser?.role || "user",
+                subscriptionTier: "free",
+                isPremium: false,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            await usersCollection.insertOne(clonedUser);
+            user = clonedUser;
+        } else if (mainUserCheck) {
+            user = mainUserCheck;
+        }
+
+        if (user && user.password) delete user.password;
+
         res.status(200).json({
             success: true,
             user,
@@ -143,15 +206,26 @@ export const logoutUser = async (req, res) => {
 export const changePassword = async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
-        const user = await User.findById(req.user._id).select("+password");
+        const targetId = new mongoose.Types.ObjectId(req.user._id);
+        const usersCollection = getRawUsersCollection();
+        const user = await usersCollection.findOne({ _id: targetId });
+
+        if (!user || !user.password) {
+            return res.status(400).json({ success: false, message: "Password cannot be changed for Social/Google accounts." });
+        }
 
         const isMatch = await bcrypt.compare(currentPassword, user.password);
         if (!isMatch) {
             return res.status(400).json({ success: false, message: "Current password does not match" });
         }
 
-        user.password = newPassword;
-        await user.save();
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        await usersCollection.updateOne(
+            { _id: targetId },
+            { $set: { password: hashedPassword, updatedAt: new Date() } }
+        );
 
         res.status(200).json({ success: true, message: "Password updated successfully" });
     } catch (error) {
@@ -160,27 +234,31 @@ export const changePassword = async (req, res) => {
 };
 
 // ==========================================
-// 📌 ৬. Upgrade to Premium Controller (Mock Payment)
+// 📌 👑 ৬. Upgrade to Premium Controller
 // ==========================================
 export const upgradeToPremium = async (req, res) => {
     try {
-        const userId = req.user._id;
-        const user = await User.findById(userId);
+        const userId = req.user._id || req.user.id;
+        const targetId = new mongoose.Types.ObjectId(userId);
+        const usersCollection = getRawUsersCollection();
+        const user = await usersCollection.findOne({ _id: targetId });
         
         if (!user) {
-            return res.status(404).json({ success: false, message: "User not found" });
+            return res.status(404).json({ success: false, message: "User profile record missing." });
         }
 
-        user.subscriptionTier = 'premium';
-        user.isPremium = true; 
-        
-        await user.save();
-        user.password = undefined;
+        await usersCollection.updateOne(
+            { _id: targetId },
+            { $set: { subscriptionTier: 'premium', isPremium: true, updatedAt: new Date() } }
+        );
+
+        const updatedUser = await usersCollection.findOne({ _id: targetId });
+        if (updatedUser.password) delete updatedUser.password;
 
         res.status(200).json({ 
             success: true, 
             message: "Successfully upgraded to Premium!", 
-            user 
+            user: updatedUser 
         });
     } catch (error) {
         console.error("Upgrade Error:", error);
@@ -193,7 +271,9 @@ export const upgradeToPremium = async (req, res) => {
 // =========================================================================
 export const getAllUsersByAdmin = async (req, res) => {
     try {
-        const users = await User.find({}).select("-password").sort({ createdAt: -1 });
+        const usersCollection = getRawUsersCollection();
+        const users = await usersCollection.find({}).project({ password: 0 }).sort({ createdAt: -1 }).toArray();
+        
         res.status(200).json({
             success: true,
             count: users.length,
@@ -212,8 +292,11 @@ export const updateUserFieldsByAdmin = async (req, res) => {
     try {
         const { id } = req.params;
         const { role, isPremium } = req.body;
+        const targetId = new mongoose.Types.ObjectId(id);
 
-        const user = await User.findById(id);
+        const usersCollection = getRawUsersCollection();
+        const user = await usersCollection.findOne({ _id: targetId });
+        
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
         }
@@ -222,20 +305,22 @@ export const updateUserFieldsByAdmin = async (req, res) => {
             return res.status(400).json({ success: false, message: "Safety Alert: You cannot remove your own Admin privileges!" });
         }
 
-        if (role) user.role = role;
+        const updateData = { updatedAt: new Date() };
+        if (role) updateData.role = role;
         
         if (isPremium !== undefined) {
-            user.isPremium = isPremium;
-            user.subscriptionTier = isPremium ? 'premium' : 'free';
+            updateData.isPremium = isPremium;
+            updateData.subscriptionTier = isPremium ? 'premium' : 'free';
         }
 
-        await user.save();
-        user.password = undefined;
+        await usersCollection.updateOne({ _id: targetId }, { $set: updateData });
+        const updatedUser = await usersCollection.findOne({ _id: targetId });
+        if (updatedUser.password) delete updatedUser.password;
 
         res.status(200).json({ 
             success: true, 
-            message: `Account of ${user.name} successfully updated! 🛠️`, 
-            user 
+            message: `Account of ${updatedUser.name} successfully updated! 🛠️`, 
+            user: updatedUser 
         });
     } catch (error) {
         console.error("Admin User Update Error:", error);
@@ -244,7 +329,7 @@ export const updateUserFieldsByAdmin = async (req, res) => {
 };
 
 // =========================================================================
-// 👑 📌 ৪. আপডেট করা কন্ট্রোলার ৯: Google OAuth user-এর pending role apply করা
+// 👑 📌 অ্যাডমিন কন্ট্রোলার ৯: Google OAuth user-এর pending role apply করা
 // =========================================================================
 export const updateMyRole = async (req, res) => {
     try {
@@ -259,14 +344,13 @@ export const updateMyRole = async (req, res) => {
             return res.status(401).json({ success: false, message: "Not authorized." });
         }
 
-        // 🛡️ [ROLE OVERWRITE SHIELD]: ডাটাবেস থেকে ইউজারের এক্সিস্টিং ডাটা আগে রিড করা
-        const checkUser = await User.findById(userId);
+        const targetId = new mongoose.Types.ObjectId(userId);
+        const usersCollection = getRawUsersCollection();
+        const checkUser = await usersCollection.findOne({ _id: targetId });
         
-        // 🚨 যদি ইউজার অলরেডি একজন "artist" বা "admin" হয়, তবে তার রোল কোনোভাবেই "user" এ নামানো যাবে না!
         if (checkUser && (checkUser.role === "artist" || checkUser.role === "admin") && role === "user") {
             console.log(`🛡️ Role Shield Triggered for ${checkUser.name}. Preventing reset back to standard user.`);
-            
-            // সেশন যেন লক না হয়, তাই তার এক্সিস্টিং রোলটাই রেসপন্সে সাকসেসফুলি ব্যাক করা হলো
+            if (checkUser.password) delete checkUser.password;
             return res.status(200).json({ 
                 success: true, 
                 message: "Welcome back! Retaining your authorized creator privileges.", 
@@ -274,32 +358,33 @@ export const updateMyRole = async (req, res) => {
             });
         }
 
-        // নতুন বা আপগ্রেডেড ইউজারের জন্য ফাইনাল আপডেট এক্সিকিউশন
-        let updatedUser = await User.findByIdAndUpdate(
-            userId,
-            { role },
-            { new: true, select: "-password" }
+        await usersCollection.updateOne(
+            { _id: targetId },
+            { $set: { role, updatedAt: new Date() } }
         );
 
-        if (!updatedUser) {
-            updatedUser = await User.findOneAndUpdate(
+        let updatedUser = await usersCollection.findOne({ _id: targetId });
+
+        if (!updatedUser && req.user.email) {
+            await usersCollection.updateOne(
                 { email: req.user.email },
-                { role },
-                { new: true, select: "-password" }
+                { $set: { role, updatedAt: new Date() } }
             );
+            updatedUser = await usersCollection.findOne({ email: req.user.email });
         }
 
         if (!updatedUser) {
             return res.status(404).json({ success: false, message: "User not found." });
         }
 
-        // 🔄 [SESSION SYNC TOKEN]: রোল চেঞ্জের পর কুকিতে ফ্রেশ আইডেন্টিটি টোকেন পুশ করা হলো
         const token = generateToken(updatedUser._id);
         res.cookie('token', token, {
             ...cookieOptions,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax'
         });
+
+        if (updatedUser.password) delete updatedUser.password;
 
         res.status(200).json({ success: true, user: updatedUser });
 
