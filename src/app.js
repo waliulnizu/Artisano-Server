@@ -60,8 +60,9 @@ app.use('/api', healthRoutes);
 // =========================================================================
 app.use('/api/auth', authRoutes); 
 
-// 🚀 [FIXED]: এক্সপ্রেস ৪.এক্স এর ইন্টারনাল পাথ-টু-রেজএক্স ক্র্যাশ সমাধান করা হলো
-app.use('/api/auth/:any*', toNodeHandler(auth)); 
+// 🚀 [ULTIMATE EXPRESS 5 FIX]: পিওর রেগুলার এক্সপ্রেশন (Regex) দিয়ে 
+// path-to-regexp v8 এর ইন্টারনাল প্যারামিটার ক্র্যাশ চিরতরে সমাধান করা হলো।
+app.use(/^\/api\/auth/, toNodeHandler(auth)); 
 
 // বাকি এক্সিস্টিং রাউটগুলো
 app.use('/api/payment', paymentRoutes);
