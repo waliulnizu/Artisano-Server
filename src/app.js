@@ -61,7 +61,7 @@ app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes); 
 
 // 🚀 [FIXED]: এক্সপ্রেস ৪.এক্স এর ইন্টারনাল পাথ-টু-রেজএক্স ক্র্যাশ সমাধান করা হলো
-app.use('/api/auth*', toNodeHandler(auth)); 
+app.use('/api/auth/:any*', toNodeHandler(auth)); 
 
 // বাকি এক্সিস্টিং রাউটগুলো
 app.use('/api/payment', paymentRoutes);
