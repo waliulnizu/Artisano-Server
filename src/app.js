@@ -60,9 +60,15 @@ app.use('/api', healthRoutes);
 // =========================================================================
 app.use('/api/auth', authRoutes); 
 
-// 🚀 [ULTIMATE EXPRESS 5 FIX]: পিওর রেগুলার এক্সপ্রেশন (Regex) দিয়ে 
-// path-to-regexp v8 এর ইন্টারনাল প্যারামিটার ক্র্যাশ চিরতরে সমাধান করা হলো।
-app.use(/^\/api\/auth/, toNodeHandler(auth)); 
+// 🚀 [ULTIMATE EXPRESS 5 FIX]: URL Stripping এবং path-to-regexp ক্র্যাশ এড়াতে
+// গ্লোবাল মিডলওয়্যার ব্যবহার করা হলো, যা শুধুমাত্র /api/auth দিয়ে শুরু হওয়া রিকোয়েস্টগুলো
+// Better-Auth কে অরিজিনাল (সম্পূর্ণ) URL সহ পাস করবে।
+app.use((req, res, next) => {
+    if (req.path.startsWith('/api/auth')) {
+        return toNodeHandler(auth)(req, res);
+    }
+    next();
+});
 
 // বাকি এক্সিস্টিং রাউটগুলো
 app.use('/api/payment', paymentRoutes);
