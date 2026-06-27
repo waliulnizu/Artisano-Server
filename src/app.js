@@ -26,11 +26,24 @@ import { toNodeHandler } from "better-auth/node";
 
 const app = express();
 
-// --- ১. গ্লোবাল মিডলওয়্যার ---
+// --- ১. গ্লোবাল মিডলওয়্যার (ডাইনামিক CORS কনফিগারেশন) ---
+const allowedOrigins = [
+    "http://localhost:3000",                                 // লোকাল ডেভেলপমেন্ট ফ্রন্টএন্ড
+    process.env.CLIENT_URL                                   // রেন্ডার ড্যাশবোর্ড থেকে আসা লাইভ ভার্সেল ডোমেন
+].filter(Boolean); // কোনো ভ্যালু যদি undefined বা ফাঁকা থাকে, তবে তা ফিল্টার করে বাদ দিয়ে দেবে
+
 app.use(cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
-    credentials: true
+    origin: function (origin, callback) {
+        // মোবাইল অ্যাপ, পোস্টম্যান বা সরাসরি ব্রাউজার হিট করলে origin থাকে না (!origin)
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error("🛡️ Security Alert: Blocked by CORS Policy!"));
+        }
+    },
+    credentials: true // কুকি, সেশন এবং অথেন্টিকেশন হেডার পাস করার জন্য মাস্ট
 }));
+
 app.use(express.json());
 app.use(cookieParser());
 
