@@ -15,7 +15,7 @@ export const generateToken = (id) => {
 export const cookieOptions = {  
     path: '/',
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: true, // 👑 FIX: Vercel - Render Cross Domain Cookie Allow
+    sameSite: 'none', // 👑 FIX: Vercel - Render Cross Domain Cookie Allow
     maxAge: 7 * 24 * 60 * 60 * 1000
 };

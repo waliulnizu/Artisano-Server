@@ -43,9 +43,7 @@ export const registerUser = async (req, res) => {
         const token = generateToken(result.insertedId);
         
         res.cookie('token', token, {
-            ...cookieOptions,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax'
+            ...cookieOptions
         });
 
         delete newUser.password;
@@ -109,9 +107,7 @@ export const loginUser = async (req, res) => {
         const token = generateToken(user._id);
         
         res.cookie('token', token, {
-            ...cookieOptions,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax'
+            ...cookieOptions
         });
 
         delete user.password;
@@ -190,8 +186,8 @@ export const logoutUser = async (req, res) => {
         res.cookie('token', '', {
             path: '/',
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            secure: true,
+            sameSite: 'none',
             expires: new Date(0), 
         });
         res.status(200).json({ success: true, message: 'Logged out successfully!' });
@@ -379,9 +375,7 @@ export const updateMyRole = async (req, res) => {
 
         const token = generateToken(updatedUser._id);
         res.cookie('token', token, {
-            ...cookieOptions,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax'
+            ...cookieOptions
         });
 
         if (updatedUser.password) delete updatedUser.password;
