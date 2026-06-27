@@ -29,11 +29,12 @@ export const auth = betterAuth({
     // নতুন ডাইনামিক অ্যারে এখানে বসানো হলো
     trustedOrigins: trustedOriginsList,
 
-    // 👑 [CROSS-DOMAIN COOKIE FIX]: ভিন্ন ভিন্ন ডোমেনে (Render -> Vercel) কুকি পাস করানোর জন্য
+    // 👑 [CROSS-DOMAIN FIX]: ভিন্ন ডোমেন (Render -> Vercel) এর জন্য
     advanced: {
-        cookieOptions: {
-            sameSite: "none", // লাইভ প্রোডাকশনে ভিন্ন ডোমেন সাপোর্ট করবে
-            secure: true      // লাইভ প্রোডাকশনের HTTPS নিশ্চিত করবে
+        crossSubDomain: true, // এটি স্বয়ংক্রিয়ভাবে সব কুকি (Session, State) SameSite=None এবং Secure করে দেয়
+        defaultCookieAttributes: {
+            sameSite: "none",
+            secure: true
         }
     },
 
