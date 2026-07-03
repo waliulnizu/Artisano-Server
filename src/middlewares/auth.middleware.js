@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import User from '../models/user.model.js';
 import { auth } from "../config/auth.config.js"; // 👑 ADD: Better-Auth এর কোর কনফিগ ফাইল ইম্পোর্ট
 
@@ -40,16 +41,28 @@ export const protect = async (req, res, next) => {
 
         if (session && session.user) {
             
-            // 🔄 ডাটা সিঙ্ক্রোনাইজেশন নোড:
-            // Better-Auth এর ডাটাবেস ইউজার অবজেক্টের ফরম্যাট আপনার ওল্ড মডেলের সাথে হুবহু মিলানোর জন্য 
-            // এবং নিচের 'isArtist' ও 'isAdmin' গার্ডে যেন কোনো ক্র্যাশ না হয়, তাই ম্যাপ করে দেওয়া হলো।
+            // 🔄 Fetch additional fields from google_users to ensure premium status is attached
+            let isPremium = false;
+            let subscriptionTier = "free";
+            try {
+                const dbUser = await mongoose.connection.db.collection("google_users").findOne({ id: session.user.id });
+                if (dbUser) {
+                    isPremium = dbUser.isPremium || false;
+                    subscriptionTier = dbUser.subscriptionTier || "free";
+                }
+            } catch (e) {
+                console.error("Failed to fetch premium status for Google user:", e);
+            }
+
             req.user = {
                 _id: session.user.id,
                 id: session.user.id,
                 name: session.user.name,
                 email: session.user.email,
-                role: session.user.role || 'user', // ডিফল্ট রোল অ্যাসাইনমেন্ট ভেরিফিকেশন
-                image: session.user.image
+                role: session.user.role || 'user', 
+                image: session.user.image,
+                isPremium,
+                subscriptionTier
             };
 
             return next(); // সাকসেস সেশন, ৪০১ এরর বাইপাস করে পরের কন্ট্রোলারে পাস 🚀

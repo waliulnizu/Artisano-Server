@@ -1,5 +1,6 @@
 import express from "express";
 import Stripe from "stripe";
+import mongoose from "mongoose";
 import { Transaction } from "../models/transaction.model.js"; // আপনার ফোল্ডার অনুযায়ী পাথটি মিলিয়ে নেবেন
 
 const router = express.Router();
@@ -37,7 +38,7 @@ router.post("/create-checkout-session", async (req, res) => {
       ],
       mode: "subscription", 
 
-      success_url: `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${process.env.FRONTEND_URL || "http://localhost:3000"}/?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL || "http://localhost:3000"}/premium`,
       
       metadata: {
@@ -68,6 +69,25 @@ router.post("/verify-payment", async (req, res) => {
     
     if (session.payment_status === "paid") {
       try {
+        const usersCollection = mongoose.connection.db.collection("users");
+        const googleUsersCollection = mongoose.connection.db.collection("google_users");
+        let targetId;
+        try {
+          targetId = new mongoose.Types.ObjectId(userId);
+        } catch(e) {
+          targetId = userId;
+        }
+
+        await usersCollection.updateOne(
+          { _id: targetId },
+          { $set: { isPremium: true, subscriptionTier: tierName || "pro" } }
+        );
+
+        await googleUsersCollection.updateOne(
+          { $or: [{ _id: targetId }, { id: userId }] },
+          { $set: { isPremium: true, subscriptionTier: tierName || "pro" } }
+        );
+
         console.log(`✨ User ${userId} successfully upgraded via Session: ${sessionId}`);
       } catch (dbErr) {
         console.error("Database update warning:", dbErr.message);
@@ -111,7 +131,15 @@ router.post("/create-single-purchase-session", async (req, res) => {
     // দ্রষ্টব্য: আপনার প্রোফাইলে যদি subscriptionTier ফিল্ড অন্য নামে থাকে, তবে সেভাবে মিলাবেন
     let userTier = "free"; 
     try {
-      const userProfile = await mongoose.model("User").findById(userId);
+      let userProfile = await mongoose.model("User").findById(userId);
+      
+      // Fallback to google_users if not found in User model
+      if (!userProfile) {
+        userProfile = await mongoose.connection.db.collection("google_users").findOne({
+          $or: [{ _id: userId }, { id: userId }]
+        });
+      }
+
       if (userProfile && userProfile.subscriptionTier) {
         userTier = userProfile.subscriptionTier.toLowerCase(); // "free", "pro", "premium"
       }

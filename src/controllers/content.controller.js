@@ -258,3 +258,25 @@ export const getSingleArtwork = async (req, res) => {
     return res.status(500).json({ success: false, message: "Server error fetching artwork details." });
   }
 };
+
+// =========================================================================
+// 📌 8. Upload Standalone Image
+// =========================================================================
+export const uploadStandaloneImage = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: "No image file provided." });
+        }
+        const fileData = req.file.buffer ? req.file.buffer : req.file.path;
+        const cloudinaryResult = await uploadOnCloudinary(fileData, "artisano_avatars");
+        
+        if (!cloudinaryResult || !cloudinaryResult.secure_url) {
+            return res.status(500).json({ success: false, message: "Image upload to Cloudinary failed." });
+        }
+
+        return res.status(200).json({ success: true, url: cloudinaryResult.secure_url });
+    } catch (error) {
+        console.error("Upload Image Error:", error);
+        return res.status(500).json({ success: false, message: "Server error during image upload." });
+    }
+};

@@ -6,7 +6,8 @@ import {
   updateContent, 
   deleteContent, 
   getArtistAssets, 
-  getSingleArtwork 
+  getSingleArtwork,
+  uploadStandaloneImage
 } from "../controllers/content.controller.js";
 import { protect } from "../middlewares/auth.middleware.js"; 
 import { upload } from "../middlewares/multer.middleware.js";
@@ -56,5 +57,8 @@ router.get("/artist-assets", protect, getArtistAssets);
 
 // 🛣️ রাউট ৭: সিঙ্গেল আর্টওয়ার্ক ভিউ নোড (🔓 পাবলিক এক্সেস)
 router.get("/:id", getSingleArtwork);
+
+// 🛣️ রাউট ৮: স্ট্যান্ডঅ্যালোন ইমেজ আপলোড (যেমন: সেটিংস পেজ থেকে প্রোফাইল ছবি আপলোড)
+router.post("/upload", protect, upload.single("file"), uploadStandaloneImage);
 
 export default router;
