@@ -258,11 +258,18 @@ router.get("/check-ownership", async (req, res) => {
       status: "succeeded"
     });
 
+    // 🎯 ইউজারের টোটাল পারচেজ কাউন্ট করা (ভিআইপি স্লট ট্র্যাকিংয়ের জন্য)
+    const totalPurchasedArtworks = await Transaction.countDocuments({
+      user: userId,
+      packageName: { $regex: /^Artwork_Purchase_/ },
+      status: "succeeded"
+    });
+
     if (hasRecord) {
-      return res.status(200).json({ success: true, hasPurchased: true });
+      return res.status(200).json({ success: true, hasPurchased: true, totalPurchasedArtworks });
     }
 
-    return res.status(200).json({ success: true, hasPurchased: false });
+    return res.status(200).json({ success: true, hasPurchased: false, totalPurchasedArtworks });
 
   } catch (error) {
     console.error("Ownership Verification Gate Error:", error);
