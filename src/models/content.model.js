@@ -50,4 +50,17 @@ const contentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// =========================================================================
+// 🚀 [PERFORMANCE]: MongoDB Query Indexes — Full collection scan এড়াতে
+// =========================================================================
+contentSchema.index({ createdAt: -1 });                    // ডিফল্ট sort (newest first)
+contentSchema.index({ category: 1, createdAt: -1 });       // category filter + sort combo
+contentSchema.index({ price: 1 });                         // price-low sort
+contentSchema.index({ price: -1 });                        // price-high sort
+contentSchema.index({ author: 1, createdAt: -1 });         // artist assets page
+
+// 🔍 [PERFORMANCE]: Full-Text Index — $regex O(n) → $text O(log n)
+// title ও description ফিল্ডে full-text search করা যাবে, index ব্যবহার হবে
+contentSchema.index({ title: "text", description: "text" }); // একটি collection-এ শুধু একটি text index হয়
+
 export const Content = mongoose.model("Content", contentSchema);

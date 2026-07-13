@@ -25,9 +25,8 @@ router.get("/public-data", getPublicContent);
 // 🛣️ রাউট ২: ভিআইপি প্রিমিয়াম গ্যালারি (শুধু প্রিমিয়াম মেম্বার ও অ্যাডমিনদের জন্য 🔒)
 // =========================================================================
 router.get("/premium-data", protect, (req, res, next) => {
-    // 👑 [SCHEMA SYNC]: ডাটাবেসের subscriptionTier প্রপার্টির সাথে চেক সিঙ্ক করা হলো
-    const tier = req.user.subscriptionTier || "free";
-    const isPremium = tier === "pro" || tier === "premium";
+    // 👑 [SCHEMA SYNC]: ডাটাবেসের isPremium বুলিয়ান প্রপার্টির সাথে চেক সিঙ্ক করা হলো
+    const isPremium = req.user.isPremium === true;
 
     if (req.user && (isPremium || req.user.role === "admin")) {
         return next(); 

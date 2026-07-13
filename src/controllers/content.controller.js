@@ -81,9 +81,11 @@ export const getPublicContent = async (req, res) => {
         // ডাইনামিক ফিল্টারিং কুয়েরি অবজেক্ট বিল্ড-আপ
         let queryObj = {}; 
 
-        // টাইটেল দিয়ে রেগুলার এক্সপ্রেশন সার্চ (Case-Insensitive)
+        // 🔍 [PERF UPDATE]: $regex O(n) COLLSCAN → $text O(log n) IXSCAN
+        // content.model.js-এ { title: "text", description: "text" } index define আছে
+        // $text operator সেই index ব্যবহার করে — সব document scan করে না
         if (search) {
-            queryObj.title = { $regex: search, $options: "i" };
+            queryObj.$text = { $search: search }; // text index-এ binary search করে
         }
 
         // ক্যাটাগরি ফিল্টার
@@ -118,6 +120,10 @@ export const getPublicContent = async (req, res) => {
             .limit(pageLimit)
             .populate({ path: "author", model: "User", select: "name profileImage" }); 
 
+        // 🚀 [PERFORMANCE]: Public gallery data browser/CDN-এ cache করা
+        // 60s পর্যন্ত cache রাখবে, তারপর background-এ নতুন data fetch হবে (stale-while-revalidate)
+        res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
         // 🚀 সরাসরি ডাটা রিটার্ন
         return res.status(200).json({
             success: true,
@@ -135,6 +141,7 @@ export const getPublicContent = async (req, res) => {
         return res.status(500).json({ success: false, message: "Server error fetching public content" });
     }
 };
+
 
 // =========================================================================
 // 📌 ৪. Get Only Logged-In Artist's Content (For "My Assets" Page)
