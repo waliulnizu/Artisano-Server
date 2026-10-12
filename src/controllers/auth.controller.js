@@ -2,12 +2,10 @@ import { generateToken, cookieOptions } from '../utils/auth.utils.js';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 
-// 🔍 ১. ডাইনামিক র (Raw) ডাটাবেস কালেকশন ড্রাইভার্স (কোনো স্কিমা ইম্পোর্ট ক্র্যাশ হবে না)
 const getRawUsersCollection = () => mongoose.connection.db.collection("users");
 const getRawGoogleUsersCollection = () => mongoose.connection.db.collection("google_users");
 
 // ==========================================
-// 📌 ১. User Registration Controller
 // ==========================================
 export const registerUser = async (req, res) => {
     try {
@@ -24,7 +22,6 @@ export const registerUser = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Email is already registered. Please login.' });
         }
 
-        // পাসওয়ার্ড হ্যাশ করা
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
@@ -62,7 +59,6 @@ export const registerUser = async (req, res) => {
 };
 
 // ==========================================
-// 📌 ২. User Login Controller (With Raw Google Sync Fallback 🔄)
 // ==========================================
 export const loginUser = async (req, res) => {
     try {
@@ -125,7 +121,6 @@ export const loginUser = async (req, res) => {
 };
 
 // =========================================================================
-// 📌 ৩. Get Current User Controller (/me) -> [🛡️ AUTOMATIC RAW PROFILE SYNC ENGINE]
 // =========================================================================
 export const getMe = async (req, res) => {
     try {
@@ -141,7 +136,7 @@ export const getMe = async (req, res) => {
         
         if (!mainUserCheck && user.email) {
             console.log(`⚡ Auto-Sync Triggered: Mirroring Google profile for ${user.email} into main users collection.`);
-            
+
             const googleCollection = getRawGoogleUsersCollection();
             const gUser = await googleCollection.findOne({ email: user.email });
 
@@ -149,10 +144,13 @@ export const getMe = async (req, res) => {
                 _id: gUser?._id || targetId,
                 name: gUser?.name || user.name || "Artisano Member",
                 email: user.email,
-                profileImage: gUser?.image || user.image || "",
+                profileImage: gUser?.image || user.image || "https://i.ibb.co/4pDNDk1/avatar.png",
                 role: gUser?.role || "user",
-                subscriptionTier: "free",
-                isPremium: false,
+                // ⚠️ Carry the paid state over — hard-coding "free" here silently
+                //    downgraded every Google VIP to a free member on their first
+                //    /auth/me call after the mirror row was created.
+                subscriptionTier: gUser?.subscriptionTier || user.subscriptionTier || "free",
+                isPremium: Boolean(gUser?.isPremium || user.isPremium),
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -160,7 +158,37 @@ export const getMe = async (req, res) => {
             await usersCollection.insertOne(clonedUser);
             user = clonedUser;
         } else if (mainUserCheck) {
+            if (!mainUserCheck.profileImage) {
+                try {
+                    const googleCollection = getRawGoogleUsersCollection();
+                    const gUser = await googleCollection.findOne({ email: mainUserCheck.email });
+                    if (gUser?.image) {
+                        await usersCollection.updateOne(
+                            { _id: mainUserCheck._id },
+                            { $set: { profileImage: gUser.image, updatedAt: new Date() } }
+                        );
+                        mainUserCheck.profileImage = gUser.image;
+                    }
+                } catch (syncErr) {
+                    console.log("Google image sync skipped:", syncErr.message);
+                }
+            }
             user = mainUserCheck;
+        }
+
+        // 🔐 /auth/me must answer with exactly what every other protected route
+        //    will see. For Google (better-auth) sessions `req.user` carries the
+        //    premium state resolved from google_users, while `user` above is the
+        //    mirror row in `users` — when they disagree the paid state wins,
+        //    otherwise the client renders VIP UI that the server then 403s.
+        if (user && req.user) {
+            const resolvedTier = req.user.subscriptionTier;
+            const resolvedIsPremium = Boolean(req.user.isPremium);
+
+            if (resolvedIsPremium || (resolvedTier && resolvedTier !== "free")) {
+                user.isPremium = true;
+                user.subscriptionTier = resolvedTier || user.subscriptionTier;
+            }
         }
 
         if (user && user.password) delete user.password;
@@ -179,7 +207,6 @@ export const getMe = async (req, res) => {
 };
 
 // ==========================================
-// 📌 ৪. Logout Controller
 // ==========================================
 export const logoutUser = async (req, res) => {
     try {
@@ -197,7 +224,6 @@ export const logoutUser = async (req, res) => {
 };
 
 // ==========================================
-// 📌 ৫. Change Password Controller
 // ==========================================
 export const changePassword = async (req, res) => {
     try {
@@ -230,7 +256,6 @@ export const changePassword = async (req, res) => {
 };
 
 // ==========================================
-// 📌 👑 ৬. Upgrade to Premium Controller
 // ==========================================
 export const upgradeToPremium = async (req, res) => {
     try {
@@ -263,8 +288,40 @@ export const upgradeToPremium = async (req, res) => {
 };
 
 // =========================================================================
-// 👑 📌 অ্যাডমিন কন্ট্রোলার ৭: ডাটাবেসের সমস্ত ইউজার লিস্ট ফেচ করা
 // =========================================================================
+export const getPublicUsers = async (req, res) => {
+    try {
+        const usersCollection = getRawUsersCollection();
+        // Only public creators (artists + admin) are listed on Featured/All Artists.
+        // Buyers (role "user") stay private and are only visible to admins via getAllUsersByAdmin.
+        const users = await usersCollection
+            .find({ role: { $in: ["artist", "admin"] } })
+            .project({ _id: 1, name: 1, profileImage: 1, role: 1 })
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        const { Content } = await import('../models/content.model.js');
+        const counts = await Content.aggregate([
+            { $group: { _id: "$author", count: { $sum: 1 } } }
+        ]);
+        const countMap = {};
+        counts.forEach(c => { countMap[String(c._id)] = c.count; });
+
+        const data = users.map(u => ({
+            id: String(u._id),
+            name: u.name || "User",
+            image: u.profileImage || "https://i.ibb.co/4pDNDk1/avatar.png",
+            role: u.role || "user",
+            count: countMap[String(u._id)] || 0
+        })).sort((a, b) => b.count - a.count);
+
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        console.error("Get Public Users Error:", error);
+        res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
 export const getAllUsersByAdmin = async (req, res) => {
     try {
         const usersCollection = getRawUsersCollection();
@@ -282,7 +339,6 @@ export const getAllUsersByAdmin = async (req, res) => {
 };
 
 // =========================================================================
-// 👑 📌 অ্যাডমিন কন্ট্রোলার ৮: অ্যাডমিন প্যানেল থেকে রোল/প্রিমিয়াম স্ট্যাটাস আপডেট করা
 // =========================================================================
 export const updateUserFieldsByAdmin = async (req, res) => {
     try {
@@ -325,7 +381,6 @@ export const updateUserFieldsByAdmin = async (req, res) => {
 };
 
 // =========================================================================
-// 👑 📌 অ্যাডমিন কন্ট্রোলার ৯: Google OAuth user-এর pending role apply করা
 // =========================================================================
 export const updateMyRole = async (req, res) => {
     try {

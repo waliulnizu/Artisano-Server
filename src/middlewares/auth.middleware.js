@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import User from '../models/user.model.js';
-import { auth } from "../config/auth.config.js"; // 👑 ADD: Better-Auth এর কোর কনফিগ ফাইল ইম্পোর্ট
+import { auth } from "../config/auth.config.js";
 
 // =========================================================================
 // 🛡️ Protect Middleware (Universal Backend Route Guard)
@@ -10,12 +10,10 @@ export const protect = async (req, res, next) => {
     try {
         let token;
 
-        // ১. ট্র্যাডিশনাল ইমেইল-পাসওয়ার্ড লগইনের কুকি চেক
         if (req.cookies && req.cookies.token) {
             token = req.cookies.token;
         }
 
-        // 👑 [লজিক ক্যাসকেড ১]: যদি ওল্ড JWT টোকেন পাওয়া যায়, তবে প্রথাগত উপায়ে ভেরিফাই করো
         if (token) {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             const user = await User.findById(decoded.id).select('-password');
@@ -27,16 +25,12 @@ export const protect = async (req, res, next) => {
                 });
             }
 
-            req.user = user; // ওল্ড ইউজার অবজেক্ট রিকোয়েস্টে সেট
-            return next(); // সাকসেস সেশন, পরের কন্ট্রোলারে পাস
+            req.user = user;
+            return next();
         }
 
         // =========================================================================
-        // 👑 UPDATE & ADD: Better-Auth (Google OAuth) সেশন ইন্টিগ্রেশন ইঞ্জিন
         // =========================================================================
-        // 🧠 Developer Thought Process: যদি ওপরে ওল্ড টোকেন না মেলে, তার মানে ইউজার গুগল দিয়ে এসেছে।
-        // Better-Auth এর অফিশিয়াল 'api.getSession' মেথড ব্রাউজারের ইনকামিং হেডার/কুকি এনালাইসিস করে 
-        // ডাটাবেস থেকে রিয়েল-টাইম সেশন অবজেক্ট এবং ইউজারের ডাইনামিক প্রোফাইল টেনে বের করে আনে।
         const session = await auth.api.getSession({ headers: req.headers });
 
         if (session && session.user) {
@@ -45,7 +39,18 @@ export const protect = async (req, res, next) => {
             let isPremium = false;
             let subscriptionTier = "free";
             try {
-                const dbUser = await mongoose.connection.db.collection("google_users").findOne({ id: session.user.id });
+                // better-auth's MongoDB adapter maps the logical `id` onto Mongo's `_id`,
+                // and google_users carries no separate `id` field — so look it up both ways,
+                // otherwise every Google member would silently be treated as a free user.
+                const lookup = [{ id: session.user.id }];
+                if (mongoose.Types.ObjectId.isValid(session.user.id)) {
+                    lookup.push({ _id: new mongoose.Types.ObjectId(session.user.id) });
+                }
+
+                const dbUser = await mongoose.connection.db
+                    .collection("google_users")
+                    .findOne({ $or: lookup });
+
                 if (dbUser) {
                     isPremium = dbUser.isPremium || false;
                     subscriptionTier = dbUser.subscriptionTier || "free";
@@ -65,10 +70,9 @@ export const protect = async (req, res, next) => {
                 subscriptionTier
             };
 
-            return next(); // সাকসেস সেশন, ৪০১ এরর বাইপাস করে পরের কন্ট্রোলারে পাস 🚀
+            return next();
         }
 
-        // যদি কোনো সেশনই মেমরিতে না মেলে, তবেই কেবল ব্লক করবে
         return res.status(401).json({ 
             success: false, 
             message: 'Not authorized! Please login first.' 
@@ -84,10 +88,8 @@ export const protect = async (req, res, next) => {
 };
 
 // =========================================================================
-// 🔒 ১. আর্টিস্ট রোল ভেরিফিকেশন মিডলওয়্যার (IsArtist Guard)
 // =========================================================================
 export const isArtist = (req, res, next) => {
-    // 🧠 ওনারশিপ চেক: কাস্টম এবং Better-Auth—উভয় ইউজারের রোল যদি artist বা admin হয়, তবেই অনুমতি পাবে
     if (req.user && (req.user.role === 'artist' || req.user.role === 'admin')) {
         return next();
     }
@@ -98,10 +100,8 @@ export const isArtist = (req, res, next) => {
 };
 
 // =========================================================================
-// 🔒 ২. অ্যাডমিন রোল ভেরিফিকেশন মিডলওয়্যার (IsAdmin Guard)
 // =========================================================================
 export const isAdmin = (req, res, next) => {
-    // 🧠 সুপার এডমিন চেক: শুধুমাত্র admin রোলের ইউজারই এই গেট পার হতে পারবেন
     if (req.user && req.user.role === 'admin') {
         return next();
     }
