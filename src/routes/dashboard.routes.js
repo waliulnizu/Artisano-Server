@@ -2,21 +2,43 @@ import express from "express";
 import { protect, isArtist, isAdmin } from "../middlewares/auth.middleware.js";
 import User from "../models/user.model.js";
 import { Content } from "../models/content.model.js";
+import { Transaction } from "../models/transaction.model.js";
+import { normalizeTier, slotsForTier, monthlyAcquisitionFilter, nextMonthStart, labelForTier } from "../utils/tier.utils.js";
 
 const router = express.Router();
 
 // =========================================================================
-// 📊 ১. সাধারণ ইউজার/বায়ার অ্যানালিটিক্স (User Dashboard Data)
 // =========================================================================
 router.get("/user-stats", protect, async (req, res) => {
     try {
         const user = await User.findById(req.user._id).select("-password");
-        // এখানে পরবর্তীতে রিয়েল পারচেজ অর্ডার কাউন্ট যোগ হবে
+
+        // Lifetime ownership — how many masterpieces this collector actually owns.
+        const purchaseCount = await Transaction.countDocuments({
+            user: req.user._id,
+            packageName: { $regex: /^Artwork_Purchase_/ },
+            status: "succeeded"
+        });
+
+        // Monthly acquisition window — what the quota widget reports.
+        const quotaUsed = await Transaction.countDocuments(monthlyAcquisitionFilter(req.user._id));
+
+        const tier = normalizeTier(req.user.subscriptionTier);
+        const quotaLimit = slotsForTier(tier);
+        const unlimited = !Number.isFinite(quotaLimit);
+
         res.status(200).json({
             success: true,
             data: {
-                wishlistCount: user.wishlist?.length || 0,
-                purchaseCount: 0 
+                wishlistCount: user?.wishlist?.length || 0,
+                purchaseCount,
+                quotaUsed,
+                quotaLimit: unlimited ? null : quotaLimit,
+                quotaRemaining: unlimited ? null : Math.max(quotaLimit - quotaUsed, 0),
+                quotaUnlimited: unlimited,
+                quotaResetAt: nextMonthStart().toISOString(),
+                tier,
+                tierLabel: labelForTier(tier)
             }
         });
     } catch (error) {
@@ -25,18 +47,16 @@ router.get("/user-stats", protect, async (req, res) => {
 });
 
 // =========================================================================
-// 🎨 ২. আর্টিস্ট স্টুডিও অ্যানালিটিক্স (Artist Dashboard Data)
 // =========================================================================
 router.get("/artist-stats", protect, isArtist, async (req, res) => {
     try {
-        // এই আর্টিস্টের মোট কয়টি এসেট আপলোড করা আছে তা গোনা
         const totalAssets = await Content.countDocuments({ author: req.user._id });
         
         res.status(200).json({
             success: true,
             data: {
                 totalAssets,
-                totalSales: 0, // মক সেলস ডাটা (পরবর্তীতে স্ট্রাইপ সিঙ্ক হবে)
+                totalSales: 0,
                 totalEarnings: 0
             }
         });
@@ -46,7 +66,6 @@ router.get("/artist-stats", protect, isArtist, async (req, res) => {
 });
 
 // =========================================================================
-// 👑 ৩. সুপার অ্যাডমিন প্যানেল অ্যানালিটিক্স (Admin Dashboard Data)
 // =========================================================================
 router.get("/admin-stats", protect, isAdmin, async (req, res) => {
     try {

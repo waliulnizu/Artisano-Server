@@ -1,11 +1,39 @@
 import mongoose from "mongoose";
+import { normalizeTier, uploadsForTier, labelForTier } from "../utils/tier.utils.js";
 
 // =========================================================================
 // 🔒 👑 ULTRA-SAFE LIVE DB VERIFICATION & LIMIT GUARD
 // =========================================================================
+
+// Creators can live in `users` (JWT accounts) or only in `google_users`
+// (better-auth accounts) — never 404 a Google artist just because the local
+// collection has no row for them.
+const resolveStudioOwner = async (userId) => {
+  const User = mongoose.model("User");
+  const direct = await User.findById(userId);
+
+  if (direct) {
+    return { role: direct.role, tier: normalizeTier(direct.subscriptionTier), name: direct.name };
+  }
+
+  const db = mongoose.connection.db;
+  if (!db || !mongoose.Types.ObjectId.isValid(String(userId))) return null;
+
+  const googleUser = await db
+    .collection("google_users")
+    .findOne({ _id: new mongoose.Types.ObjectId(String(userId)) }, { projection: { name: 1, role: 1, subscriptionTier: 1 } });
+
+  if (!googleUser) return null;
+
+  return {
+    role: googleUser.role || "user",
+    tier: normalizeTier(googleUser.subscriptionTier),
+    name: googleUser.name
+  };
+};
+
 export const checkUploadLimit = async (req, res, next) => {
   try {
-    // ১. সেশন বা কুকি থেকে শুধু মেইন ইউজার আইডিটা বের করা
     const sessionUser = req.user || req.session?.user;
     if (!sessionUser) {
       return res.status(401).json({ success: false, message: "Unauthorized: Please log in again." });
@@ -13,20 +41,17 @@ export const checkUploadLimit = async (req, res, next) => {
 
     const userId = sessionUser._id || sessionUser.id;
 
-    // ২. 🚀 [THE SMART FETCH]: সেশনের ওপর ভরসা না করে সরাসরি ডাটাবেস থেকে রিয়েল ডাটা তুলে আনা
-    const User = mongoose.model("User");
-    const liveUser = await User.findById(userId);
+    const owner = await resolveStudioOwner(userId);
 
-    if (!liveUser) {
+    if (!owner) {
       return res.status(404).json({ success: false, message: "User profile not found in database." });
     }
 
-    // ৩. লাইভ ডাটাবেস থেকে রোল এবং সাবস্ক্রিপশন চেক
-    const userRole = liveUser.role;
-    const tier = liveUser.subscriptionTier || "free";
-    const isPremium = tier === "pro" || tier === "premium";
+    // ⚠️ Raw subscription strings ("VIP Premium Pro") are normalised, otherwise a
+    //    paying member would be charged against the free-tier upload allowance.
+    const userRole = owner.role;
+    const tier = owner.tier;
 
-    // আর্টিস্ট বা এডমিন না হলে সরাসরি ব্লক
     if (userRole !== "admin" && userRole !== "artist") {
       return res.status(403).json({ 
         success: false, 
@@ -34,22 +59,21 @@ export const checkUploadLimit = async (req, res, next) => {
       });
     }
 
-    // এডমিন হলে আনলিমিটেড আপলোড বাইপাস
     if (userRole === "admin") {
       return next();
     }
 
-    // ৪. কন্টেন্ট কাউন্ট ইঞ্জিন
     const Content = mongoose.model("Content");
     const uploadedCount = await Content.countDocuments({ author: userId });
 
-    // ৫. কোটা রুলস: প্রিমিয়াম হলে লিমিট ৯, ফ্রি হলে লিমিট ৩
-    const maxLimit = isPremium ? 9 : 3;
+    // Free 3 · VIP Pro 25 · Studio Enterprise unlimited (storage-backed ceiling).
+    const maxLimit = uploadsForTier(tier);
+    const unlimited = !Number.isFinite(maxLimit);
 
-    if (uploadedCount >= maxLimit) {
+    if (!unlimited && uploadedCount >= maxLimit) {
       return res.status(403).json({
         success: false,
-        message: `Upload Blocked: Your free tier subscription limit reached (${uploadedCount}/${maxLimit} assets). Upgrade to VIP Room to unlock more space! 👑`
+        message: `Upload Blocked: your ${labelForTier(tier)} studio allowance is full (${uploadedCount}/${maxLimit} assets). Upgrade your node to publish more! 👑`
       });
     }
 

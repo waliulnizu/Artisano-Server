@@ -1,18 +1,17 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
-// ১. ইউজারের স্কিমা (ছাঁচ) তৈরি করা
 const userSchema = new mongoose.Schema(
     {
         name: {
             type: String,
             required: [true, 'Full name is required'],
-            trim: true, // নামের আগে-পিছে স্পেস থাকলে কেটে দেবে
+            trim: true,
         },
         email: {
             type: String,
             required: [true, 'Email is required'],
-            unique: true, // একই ইমেইলে দুজন অ্যাকাউন্ট খুলতে পারবে না
+            unique: true,
             lowercase: true,
             trim: true,
         },
@@ -20,21 +19,33 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: [true, 'Password is required'],
             minlength: [6, 'Password must be at least 6 characters'],
-            select: false, // ডাটাবেস থেকে ইউজার খুঁজলে ডিফল্টভাবে পাসওয়ার্ড দেখাবে না (সিকিউরিটি)
+            select: false,
         },
         role: {
             type: String,
-            enum: ['user', 'artist', 'admin'], // এই ৩টি ছাড়া অন্য কোনো রোল দেওয়া যাবে না
-            default: 'user', // অ্যাকাউন্ট খুললে ডিফল্টভাবে সে 'user' হবে
+            enum: ['user', 'artist', 'admin'],
+            default: 'user',
         },
+        // 👑 Stripe writes the *raw* plan name ("VIP Premium Pro",
+        //    "Studio Enterprise") straight into this field, so it must stay a
+        //    plain string — a schema enum would strip it on write and, worse,
+        //    blow up validation on any later .save().
+        //    Every quota/permission decision goes through normalizeTier().
         subscriptionTier: {
             type: String,
-            enum: ['free', 'pro', 'premium'],
             default: 'free',
+        },
+        // ⚠️ This flag used to be missing from the schema entirely, so mongoose
+        //    silently dropped it from every User.findById() result: paying VIPs
+        //    were 403'd out of the premium room because req.user.isPremium was
+        //    undefined while /auth/me (raw collection) still said true.
+        isPremium: {
+            type: Boolean,
+            default: false,
         },
         profileImage: {
             type: String,
-            default: 'https://i.ibb.co/4pDNDk1/avatar.png', // ডিফল্ট একটি ডামি ছবি
+            default: 'https://i.ibb.co/4pDNDk1/avatar.png',
         },
         wishlist: [
             {
@@ -44,24 +55,19 @@ const userSchema = new mongoose.Schema(
         ]
     },
     {
-        timestamps: true, // এটি দিলে createdAt এবং updatedAt নামে দুটি ফিল্ড অটোমেটিক তৈরি হবে
+        timestamps: true,
     }
 );
 
-// ২. ডাটাবেসে সেভ হওয়ার ঠিক আগে পাসওয়ার্ড হ্যাশ (লুকানোর) করার লজিক (Pre-save Hook)
 userSchema.pre('save', async function () {
-    // যদি পাসওয়ার্ড পরিবর্তন না হয়, তাহলে এটি স্কিপ করে সামনে যাও
     if (!this.isModified('password')) return;
 
-    // পাসওয়ার্ড পরিবর্তন বা নতুন হলে সেটিকে হ্যাশ করো (12 rounds of salt)
     this.password = await bcrypt.hash(this.password, 12);
 });
 
-// ৩. লগইন করার সময় ইউজারের দেওয়া পাসওয়ার্ড আর ডাটাবেসের হ্যাশ পাসওয়ার্ড মেলানোর ফাংশন
 userSchema.methods.comparePassword = async function (candidatePassword, userPassword) {
     return await bcrypt.compare(candidatePassword, userPassword);
 };
 
-// ৪. মডেল তৈরি এবং এক্সপোর্ট করা
 const User = mongoose.model('User', userSchema);
 export default User;
