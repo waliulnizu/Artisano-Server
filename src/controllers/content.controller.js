@@ -1,8 +1,10 @@
+import mongoose from "mongoose";
 import { Content } from "../models/content.model.js";
+import { Transaction } from "../models/transaction.model.js";
+import User from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 
 // =========================================================================
-// 📌 ১. Create New Content (Admin & Artist Combined)
 // =========================================================================
 export const createContent = async (req, res) => {
     try {
@@ -46,7 +48,6 @@ export const createContent = async (req, res) => {
 };
 
 // =========================================================================
-// 📌 ২. Get All Content for VIP Dashboard (Shows Both Free & Premium)
 // =========================================================================
 export const getPremiumContent = async (req, res) => {
     try {
@@ -67,64 +68,50 @@ export const getPremiumContent = async (req, res) => {
 };
 
 // =========================================================================
-// 👑 📌 ৩. Get All Content for Public Feed (অ্যাডভান্সড সার্চ, ফিল্টার ও পেজিনেশন ইঞ্জিন)
 // =========================================================================
 export const getPublicContent = async (req, res) => {
     try {
-        // 🎯 [BYPASS HEADERS]: ক্রস-অরিজিন এবং প্রি-ফ্লাইট রিকোয়েস্টে Better-Auth-এর ৪০১ জ্যাম এড়াতে এক্সপ্লিসিট হেডার
         res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
         res.header("Access-Control-Allow-Credentials", "true");
         res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
 
         const { search, category, minPrice, maxPrice, sort, page, limit } = req.query;
 
-        // ডাইনামিক ফিল্টারিং কুয়েরি অবজেক্ট বিল্ড-আপ
         let queryObj = {}; 
 
         // 🔍 [PERF UPDATE]: $regex O(n) COLLSCAN → $text O(log n) IXSCAN
-        // content.model.js-এ { title: "text", description: "text" } index define আছে
-        // $text operator সেই index ব্যবহার করে — সব document scan করে না
         if (search) {
-            queryObj.$text = { $search: search }; // text index-এ binary search করে
+            queryObj.$text = { $search: search };
         }
 
-        // ক্যাটাগরি ফিল্টার
         if (category && category !== "all") {
             queryObj.category = category.toLowerCase();
         }
 
-        // প্রাইস রেঞ্জ ফিল্টার (মিনিমাম ও ম্যাক্সিমাম)
         if (minPrice || maxPrice) {
             queryObj.price = {};
             if (minPrice) queryObj.price.$gte = Number(minPrice);
             if (maxPrice) queryObj.price.$lte = Number(maxPrice);
         }
 
-        // ডাইনামিক সর্টিং ইঞ্জিন (Sorting Logic)
-        let sortObj = { createdAt: -1 }; // ডিফল্ট: Newest First
-        if (sort === "price-low") sortObj = { price: 1 };   // কম থেকে বেশি দাম
-        if (sort === "price-high") sortObj = { price: -1 };  // বেশি থেকে কম দাম
+        let sortObj = { createdAt: -1 };
+        if (sort === "price-low") sortObj = { price: 1 };
+        if (sort === "price-high") sortObj = { price: -1 };
 
-        // কাস্টম পেজিনেশন কন্ট্রোল (Pagination Control)
         const currentPage = Number(page) || 1;
-        const pageLimit = Number(limit) || 8; // প্রতি পেজে ৮টি আইটেম রেন্ডার হবে
+        const pageLimit = Number(limit) || 8;
         const skipItems = (currentPage - 1) * pageLimit;
 
-        // মঙ্গোডিবি কুয়েরি এক্সিকিউশন চেইন
         const totalArtworks = await Content.countDocuments(queryObj);
         
-        // 👑 [UPDATE]: পপুলেশন মেকানিজম ক্র্যাশ এড়াতে Explicit Model Reference চেইন বসানো হলো
         const allData = await Content.find(queryObj)
             .sort(sortObj)
             .skip(skipItems)
             .limit(pageLimit)
             .populate({ path: "author", model: "User", select: "name profileImage" }); 
 
-        // 🚀 [PERFORMANCE]: Public gallery data browser/CDN-এ cache করা
-        // 60s পর্যন্ত cache রাখবে, তারপর background-এ নতুন data fetch হবে (stale-while-revalidate)
         res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 
-        // 🚀 সরাসরি ডাটা রিটার্ন
         return res.status(200).json({
             success: true,
             meta: {
@@ -142,9 +129,7 @@ export const getPublicContent = async (req, res) => {
     }
 };
 
-
 // =========================================================================
-// 📌 ৪. Get Only Logged-In Artist's Content (For "My Assets" Page)
 // =========================================================================
 export const getArtistAssets = async (req, res) => {
     try {
@@ -164,7 +149,6 @@ export const getArtistAssets = async (req, res) => {
 };
 
 // =========================================================================
-// 📌 ৫. Update/Edit Existing Content (CRUD - Update)
 // =========================================================================
 export const updateContent = async (req, res) => {
   try {
@@ -210,7 +194,6 @@ export const updateContent = async (req, res) => {
 };
 
 // =========================================================================
-// 📌 ৬৬. Delete Content (CRUD - Delete)
 // =========================================================================
 export const deleteContent = async (req, res) => {
   try {
@@ -245,7 +228,7 @@ export const getSingleArtwork = async (req, res) => {
     const { id } = req.params;
 
     const artwork = await Content.findById(id).populate({ path: "author", model: "User", select: "name profileImage email" });
-    
+
     if (!artwork) {
       return res.status(404).json({ 
         success: false, 
@@ -253,9 +236,17 @@ export const getSingleArtwork = async (req, res) => {
       });
     }
 
+    // 📊 Social proof: how many collectors already own this edition.
+    //    An edition can be owned by unlimited buyers, so this is derived from the
+    //    transaction ledger instead of a hard "sold" flag on the artwork itself.
+    const collectorCount = await Transaction.countDocuments({
+      packageName: `Artwork_Purchase_${artwork._id}`,
+      status: "succeeded"
+    });
+
     return res.status(200).json({
       success: true,
-      data: artwork
+      data: { ...artwork.toObject(), collectorCount }
     });
   } catch (error) {
     console.error("Get Single Artwork Error:", error);
@@ -285,5 +276,80 @@ export const uploadStandaloneImage = async (req, res) => {
     } catch (error) {
         console.error("Upload Image Error:", error);
         return res.status(500).json({ success: false, message: "Server error during image upload." });
+    }
+};
+
+// =========================================================================
+// 📌 9. Creator dossier — powers the "Dossier" modal on the artwork page
+// =========================================================================
+export const getArtistProfile = async (req, res) => {
+    try {
+        const { authorId } = req.query;
+
+        if (!authorId || !mongoose.Types.ObjectId.isValid(authorId)) {
+            return res.status(400).json({ success: false, message: "A valid creator id is required." });
+        }
+
+        // 📚 Catalog size: everything this creator has published.
+        const works = await Content.find({ author: authorId }).select("_id").lean();
+        const totalArtworks = works.length;
+
+        // 🖼 Acquired works: how many of those editions collectors have secured.
+        //    One edition can be acquired by unlimited collectors, so we count the
+        //    distinct artworks, not the receipts.
+        const acquisitions = totalArtworks
+            ? await Transaction.find({
+                  status: "succeeded",
+                  packageName: { $in: works.map((w) => `Artwork_Purchase_${w._id}`) }
+              })
+                  .select("packageName user")
+                  .lean()
+            : [];
+
+        const acquiredWorks = new Set(acquisitions.map((a) => a.packageName)).size;
+        const collectors = new Set(acquisitions.map((a) => String(a.user))).size;
+
+        // Creators are either local users or better-auth (Google) users.
+        const creator = await User.findById(authorId)
+            .select("name email profileImage role createdAt")
+            .lean();
+
+        const googleCreator = creator
+            ? null
+            : await mongoose.connection.db.collection("google_users").findOne(
+                  { _id: new mongoose.Types.ObjectId(authorId) },
+                  { projection: { name: 1, email: 1, image: 1, createdAt: 1 } }
+              );
+
+        const profile =
+            creator ||
+            (googleCreator && {
+                _id: googleCreator._id,
+                name: googleCreator.name,
+                email: googleCreator.email,
+                profileImage: googleCreator.image,
+                createdAt: googleCreator.createdAt
+            });
+
+        if (!profile) {
+            return res.status(404).json({ success: false, message: "Creator profile not found." });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                _id: String(profile._id),
+                name: profile.name || "Verified Artisan",
+                email: profile.email || "",
+                profileImage: profile.profileImage || "",
+                joinedAt: profile.createdAt || null,
+                totalArtworks,
+                acquiredWorks,
+                collectors
+            }
+        });
+    } catch (error) {
+        console.error("Artist Profile Error:", error);
+        return res.status(500).json({ success: false, message: "Server error fetching creator dossier." });
     }
 };

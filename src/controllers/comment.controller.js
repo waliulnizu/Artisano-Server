@@ -1,14 +1,12 @@
 import Comment from "../models/comment.model.js";
 
 // =========================================================================
-// 📝 ১. নতুন কমেন্ট তৈরি করার লজিক (Create Comment)
 // =========================================================================
 export const createComment = async (req, res) => {
   try {
     const { artworkId, text } = req.body;
     const userId = req.user._id; 
 
-    // ডাটাবেসে কমেন্ট ইনসার্ট করা
     const newComment = await Comment.create({
       artworkId,
       user: userId,
@@ -29,7 +27,6 @@ export const createComment = async (req, res) => {
 };
 
 // =========================================================================
-// 📥 ২. নির্দিষ্ট আর্টওয়ার্কের সব কমেন্ট তুলে আনার লজিক (Get Comments)
 // =========================================================================
 export const getArtworkComments = async (req, res) => {
   try {
@@ -51,7 +48,6 @@ export const getArtworkComments = async (req, res) => {
 };
 
 // =========================================================================
-// ✏️ ৩. কমেন্ট এডিট করার লজিক (Update Comment)
 // =========================================================================
 export const updateComment = async (req, res) => {
   try {
@@ -63,7 +59,6 @@ export const updateComment = async (req, res) => {
       return res.status(404).json({ success: false, message: "Comment not found." });
     }
 
-    // 🔒 সিকিউরিটি ভেরিফিকেশন: String কনভার্সন দিয়ে টাইপ মিসম্যাচ লক ফিক্স
     if (String(comment.user) !== String(userId)) {
       return res.status(403).json({ success: false, message: "Unauthorized asset manipulation block." });
     }
@@ -83,7 +78,6 @@ export const updateComment = async (req, res) => {
 };
 
 // =========================================================================
-// 🗑️ ৪. কমেন্ট ডিলিট করার লজিক (Delete Comment)
 // =========================================================================
 export const deleteComment = async (req, res) => {
   try {
@@ -95,7 +89,6 @@ export const deleteComment = async (req, res) => {
       return res.status(404).json({ success: false, message: "Comment not found." });
     }
 
-    // 🔒 সিকিউরিটি ভেরিফিকেশন
     if (String(comment.user) !== String(userId)) {
       return res.status(403).json({ success: false, message: "Unauthorized manipulation block." });
     }
@@ -109,5 +102,27 @@ export const deleteComment = async (req, res) => {
   } catch (error) {
     console.error("Delete Comment Error:", error);
     return res.status(500).json({ success: false, message: "Internal server error dropping comment." });
+  }
+};
+
+// =========================================================================
+// 💬 Guestbook impressions left by the signed-in collector
+// =========================================================================
+export const getMyComments = async (req, res) => {
+  try {
+    const userId = req.user?._id || req.session?.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized. Please log in." });
+    }
+
+    const comments = await Comment.find({ user: userId })
+      .populate({ path: "artworkId", model: "Content", select: "title featuredImage price category" })
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({ success: true, count: comments.length, data: comments });
+  } catch (error) {
+    console.error("GET_MY_COMMENTS_ERROR:", error);
+    return res.status(500).json({ success: false, message: "Server error fetching your guestbook notes." });
   }
 };
