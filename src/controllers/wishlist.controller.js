@@ -1,7 +1,6 @@
 import User from "../models/user.model.js";
 
 // =========================================================================
-// ❤️ ১. উইশলিস্ট টগল লজিক (Error Free Array Based)
 // =========================================================================
 export const toggleWishlist = async (req, res) => {
   try {
@@ -36,30 +35,27 @@ export const toggleWishlist = async (req, res) => {
 };
 
 // =========================================================================
-// 📥 ২. ইউজারের নিজস্ব উইশলিস্ট ডাটা তুলে আনা (The Permanent Fix)
 // =========================================================================
 export const getMyWishlist = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    // 🧠 🚀 UPDATE: পপুলেশন পাথ এর সাথে মডেলের নাম সুনির্দিষ্টভাবে লক করা হলো
     const userWithWishlist = await User.findById(userId).populate({
       path: "wishlist",
-      model: "Content" // 👈 আপনার আর্টওয়ার্ক মঙ্গুজ মডেলের এক্সপোর্ট নেম
+      model: "Content"
     });
 
     if (!userWithWishlist || !userWithWishlist.wishlist) {
       return res.status(200).json({ success: true, count: 0, data: [] });
     }
 
-    // 🧠 🚀 UPDATE & REMOVE EXTRA NESTING: কোনো জটিল র‍্যাপিং ছাড়া ক্লিন আর্ট অবজেক্ট পাঠানো
     const formattedWishlist = userWithWishlist.wishlist
-      .filter(artwork => artwork !== null); // ডিলিট হয়ে যাওয়া আর্ট ফিল্টার করা
+      .filter(artwork => artwork !== null);
 
     return res.status(200).json({
       success: true,
       count: formattedWishlist.length,
-      data: formattedWishlist // 👈 সরাসরি পিউর আর্ট অবজেক্ট অ্যারে হিসেবে যাবে
+      data: formattedWishlist
     });
   } catch (error) {
     console.error("CRITICAL GET_WISH_LIST ERROR:", error);

@@ -6,32 +6,27 @@ import mongoose from "mongoose";
 
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
-// 👑 [DYNAMIC ORIGINS PROD FIX]: ব্যাকএন্ড ও ফ্রন্টএন্ড সব লাইভ লিঙ্ক এখানে লক করা হলো
 const trustedOriginsList = [
     "http://localhost:3000",          
     "http://localhost:5000",          
-    "https://artisano.vercel.app",             // লাইভ ফ্রন্টএন্ড
-    "https://artisano-server.onrender.com",    // 🚨 মাস্ট: লাইভ ব্যাকএন্ড নিজের ডোমেইন
+    "https://artisano.vercel.app",
+    "https://artisano-server.onrender.com",
     process.env.NEXT_PUBLIC_APP_URL,  
     process.env.CLIENT_URL            
 ].filter(Boolean);                    
 
 export const auth = betterAuth({
-    // ডাটাবেস অ্যাডাপ্টার
     database: mongodbAdapter(new Proxy({}, {
         get: (_, prop) => mongoose.connection.db[prop]
     })),
     
-    // 👑 [CRITICAL LIVE FIX]: লাইভ প্রোডাকশনের জন্য সম্পূর্ণ এপিআই রুটটি ফলব্যাক হিসেবে এনফোর্স করা হলো
     baseURL: process.env.BETTER_AUTH_URL || "https://artisano-server.onrender.com/api/auth", 
-    trustHost: true, // 🚨 Vercel/Render-এর মতো Proxy সার্ভারে HTTP/HTTPS কনফ্লিক্ট দূর করতে ఇది মাস্ট!
+    trustHost: true,
     
-    // নতুন ডাইনামিক অ্যারে এখানে বসানো হলো
     trustedOrigins: trustedOriginsList,
 
-    // 👑 [CROSS-DOMAIN FIX]: ভিন্ন ডোমেন (Render -> Vercel) এর জন্য
     advanced: {
-        crossSubDomain: true, // এটি স্বয়ংক্রিয়ভাবে সব কুকি (Session, State) SameSite=None এবং Secure করে দেয়
+        crossSubDomain: true,
         defaultCookieAttributes: {
             sameSite: "none",
             secure: true
@@ -46,7 +41,6 @@ export const auth = betterAuth({
     },
 
     // =========================================================
-    // 📦 MongoDB Collection Mapping (বাকি কোড আগের মতোই থাকবে...)
     // =========================================================
     user: {
         modelName: "google_users",

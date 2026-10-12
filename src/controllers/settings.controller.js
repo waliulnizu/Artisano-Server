@@ -2,7 +2,6 @@ import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 
 // =========================================================================
-// 👤 ১. Update Profile Info (Name & Profile Image)
 // =========================================================================
 export const updateProfileInfo = async (req, res) => {
   try {
@@ -31,7 +30,6 @@ export const updateProfileInfo = async (req, res) => {
 };
 
 // =========================================================================
-// 🔒 ২. Update Password (Security Controls)
 // =========================================================================
 export const updateAccountPassword = async (req, res) => {
   try {
@@ -47,13 +45,11 @@ export const updateAccountPassword = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found." });
     }
 
-    // ওল্ড পাসওয়ার্ড ম্যাচিং চেক
     const isMatch = await bcrypt.compare(oldPassword, user.password);
     if (!isMatch) {
       return res.status(400).json({ success: false, message: "Current password does not match!" });
     }
 
-    // নতুন পাসওয়ার্ড হ্যাশ করে সেভ করা
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
     await user.save();

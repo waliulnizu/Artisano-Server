@@ -152,18 +152,15 @@ export const updateProfile = async (req, res) => {
         const { name } = req.body;
         const userId = req.user._id; 
 
-        // ১. শুরুতে ইউজারকে খুঁজে বের করুন
         let user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        // ২. যদি নতুন নাম আপডেট করতে চায়
         if (name) {
             user.name = name;
         }
 
-        // ৩. যদি ইমেজ ফাইল থাকে, তবে Cloudinary তে আপলোড করুন
         if (req.file) {
             const profileImageLocal = req.file.buffer;
             
@@ -181,10 +178,8 @@ export const updateProfile = async (req, res) => {
             }
         }
 
-        // ৪. ইউজার ডাটা সেভ করুন
         await user.save();
 
-        // ৫. পাসওয়ার্ড বাদ দিয়ে রেসপন্স পাঠান
         user.password = undefined; 
 
         res.status(200).json({ success: true, user });

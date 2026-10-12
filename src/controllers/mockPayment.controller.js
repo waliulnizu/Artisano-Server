@@ -12,18 +12,15 @@ export const createMockTransaction = async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized log in required." });
     }
 
-    // ডাইনামিক প্যাকেজ এরে টেস্ট ডাটা জেনারেট করার জন্য
     const mockPackages = [
       { name: "Pro VIP Membership Room", amount: 29.99 },
       { name: "Premium Brush Kit v4.2", amount: 15.00 },
       { name: "Masterclass Oil Painting Tutorial", amount: 49.00 }
     ];
 
-    // র্যান্ডমলি একটি প্যাকেজ সিলেক্ট করা
     const randomPackage = mockPackages[Math.floor(Math.random() * mockPackages.length)];
     const mockTxId = `ch_${crypto.randomBytes(12).toString("hex")}`;
 
-    // ডাটাবেসে সরাসরি ট্রানজেকশন ক্রিয়েট করা
     const newTx = await Transaction.create({
       transactionId: mockTxId,
       user: userId,

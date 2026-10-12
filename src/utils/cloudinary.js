@@ -5,14 +5,12 @@ export const uploadOnCloudinary = async (fileData, folderName = "artisano_conten
   try {
     if (!fileData) return null;
 
-    // 👑 📌 ফিক্স ১: ফাংশন কল হওয়ার সাথে সাথেই কনফিগারেশন লক করা হলো, যাতে নিচের সব মেথড এটি পায়
     cloudinary.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
       api_secret: process.env.CLOUDINARY_API_SECRET,
     });
 
-    // 🧠 🛠️ হ্যান্ডলার ১: ডাটা যদি ফাইল বাফার (Buffer) হয়
     if (Buffer.isBuffer(fileData)) {
       return new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
@@ -20,24 +18,21 @@ export const uploadOnCloudinary = async (fileData, folderName = "artisano_conten
           (error, result) => {
             if (error) {
               console.error("Cloudinary Buffer Upload Error:", error);
-              return reject(error); // প্রমিজ রিজেক্ট
+              return reject(error);
             }
-            return resolve(result); // প্রমিজ সাকসেস
+            return resolve(result);
           }
         );
         uploadStream.end(fileData);
       });
     }
 
-    // 🧠 🛠️ হ্যান্ডলার ২: ডাটা যদি লোকাল ফাইল পাথ (Disk Path) হয়
-    // 📌 ফিক্স ২: ক্লাউডিনারি এখন ওপরের ডাইনামিক কনফিগারেশনটি নির্ভুলভাবে রিড করতে পারবে
     console.log("Processing disk file upload to Cloudinary...");
     const response = await cloudinary.uploader.upload(fileData, {
       folder: folderName,
       resource_type: "auto",
     });
 
-    // লোকাল সার্ভার থেকে আপলোড শেষে ফাইলটি ক্যাশ ক্লিয়ার করতে মুছে ফেলা
     if (typeof fileData === "string" && fs.existsSync(fileData)) {
       fs.unlinkSync(fileData);
     }
@@ -46,7 +41,6 @@ export const uploadOnCloudinary = async (fileData, folderName = "artisano_conten
 
   } catch (error) {
     console.error("Global Cloudinary Upload Utility Error:", error);
-    // এরর আসলেও সার্ভারে ফাইল আটকে থাকলে তা ডিলিট করা
     if (typeof fileData === "string" && fs.existsSync(fileData)) {
       fs.unlinkSync(fileData);
     }
