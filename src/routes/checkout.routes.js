@@ -3,7 +3,6 @@ import Stripe from "stripe";
 
 const router = express.Router();
 
-// সিক্রেট কি দিয়ে স্ট্রাইপ ইনিশিয়েট করা
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Create a checkout session
@@ -39,5 +38,4 @@ router.post("/create-checkout-session", async (req, res) => {
   }
 });
 
-// 👑 মডার্ন নিয়মে এক্সপোর্ট (ফিক্সড)
 export default router;
